@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from engine import simulate_second_half
-from live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+from bpi_live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
 st.title("🏀 BPI V1.0 — Basketball Predictive Intelligence")
