@@ -80,32 +80,47 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
         a = {"fga": a_fga, "fgm": a_fgm, "3pa": a_3pa, "3pm": a_3pm, "tov": a_tov, "orb": a_orb, "ftm": a_ftm, "fta": a_fta}
         result = simulate_second_half(home_ht, away_ht, h, a, sims)
         # Compatibilité avec une ancienne version du moteur qui ne renvoyait pas total_mean.
-        total_mean = result.get("total_mean", result["home_mean"] + result["away_mean"])
+        # Normalisation défensive : l'interface reste compatible avec plusieurs schémas du moteur.
+        home_mean = result.get("home_mean", float(home_ht))
+        away_mean = result.get("away_mean", float(away_ht))
+        total_mean = result.get("total_mean", home_mean + away_mean)
         total_median = result.get("total_median", total_mean)
+        home_win = result.get("home_win")
+        away_win = result.get("away_win")
+        tie = result.get("tie")
+        total_p10 = result.get("total_p10")
+        total_p90 = result.get("total_p90")
+        margin_p10 = result.get("margin_p10")
+        margin_p90 = result.get("margin_p90")
+        home_possessions = result.get("home_possessions_ht")
+        away_possessions = result.get("away_possessions_ht")
+        pace_mean = result.get("pace_mean")
+        home_ppp = result.get("home_ppp_assumed")
+        away_ppp = result.get("away_ppp_assumed")
         st.warning("Attention : simulation exploratoire, non entraînée et non calibrée. Ce n'est pas une probabilité fiable ni un conseil de pari.")
         m1, m2, m3 = st.columns(3)
-        m1.metric(f"Victoire {home}", f"{result['home_win']:.1f}%")
-        m2.metric(f"Victoire {away}", f"{result['away_win']:.1f}%")
-        m3.metric("Égalité à la fin du temps réglementaire", f"{result['tie']:.1f}%")
+        m1.metric(f"Victoire {home}", f"{home_win:.1f}%" if home_win is not None else "Indisponible")
+        m2.metric(f"Victoire {away}", f"{away_win:.1f}%" if away_win is not None else "Indisponible")
+        m3.metric("Égalité à la fin du temps réglementaire", f"{tie:.1f}%" if tie is not None else "Indisponible")
         st.subheader("Projection du score final")
-        st.write(f"**{home} : {result['home_mean']:.1f} points** · **{away} : {result['away_mean']:.1f} points**")
+        st.write(f"**{home} : {home_mean:.1f} points** · **{away} : {away_mean:.1f} points**")
         st.write(f"Total moyen : **{total_mean:.1f}** · médian : **{total_median:.0f}**")
-        st.write(f"Intervalle exploratoire du total (10e–90e percentile) : **{result['total_p10']:.0f} à {result['total_p90']:.0f} points**")
-        st.write(f"Intervalle exploratoire de la marge domicile (10e–90e percentile) : **{result['margin_p10']:.0f} à {result['margin_p90']:.0f} points**")
+        st.write(f"Intervalle exploratoire du total (10e–90e percentile) : **{total_p10:.0f} à {total_p90:.0f} points**" if total_p10 is not None and total_p90 is not None else "Intervalle du total : indisponible dans cette version du moteur.")
+        st.write(f"Intervalle exploratoire de la marge domicile (10e–90e percentile) : **{margin_p10:.0f} à {margin_p90:.0f} points**" if margin_p10 is not None and margin_p90 is not None else "Intervalle de marge : indisponible dans cette version du moteur.")
         st.subheader("Diagnostic du rythme et de l'efficacité")
-        st.write(f"Possessions estimées à la pause : {result['home_possessions_ht']:.1f} — {result['away_possessions_ht']:.1f}. Rythme partagé supposé pour la seconde mi-temps : {result['pace_mean']:.1f} possessions.")
-        st.write(f"Efficacité par possession supposée : {home} {result['home_ppp_assumed']:.2f} · {away} {result['away_ppp_assumed']:.2f} points.")
+        st.write(f"Possessions estimées à la pause : {home_possessions:.1f} — {away_possessions:.1f}. Rythme partagé supposé pour la seconde mi-temps : {pace_mean:.1f} possessions." if None not in (home_possessions, away_possessions, pace_mean) else "Diagnostic des possessions : indisponible dans cette version du moteur.")
+        st.write(f"Efficacité par possession supposée : {home} {home_ppp:.2f} · {away} {away_ppp:.2f} points." if home_ppp is not None and away_ppp is not None else "Efficacité par possession : indisponible dans cette version du moteur.")
         st.session_state.prediction_history.append({
             "horodatage_utc": datetime.now(timezone.utc).isoformat(),
             "date_match": str(game_date), "competition": competition,
             "domicile": home, "exterieur": away,
             "score_pause_domicile": home_ht, "score_pause_exterieur": away_ht,
-            "simulations": sims, "proba_victoire_domicile_pct": round(result["home_win"], 2),
-            "proba_victoire_exterieur_pct": round(result["away_win"], 2),
-            "score_final_moyen_domicile": round(result["home_mean"], 2),
-            "score_final_moyen_exterieur": round(result["away_mean"], 2),
+            "simulations": sims, "proba_victoire_domicile_pct": round(home_win, 2) if home_win is not None else None,
+            "proba_victoire_exterieur_pct": round(away_win, 2) if away_win is not None else None,
+            "score_final_moyen_domicile": round(home_mean, 2),
+            "score_final_moyen_exterieur": round(away_mean, 2),
             "total_moyen": round(total_mean, 2),
-            "total_p10": round(result["total_p10"], 2), "total_p90": round(result["total_p90"], 2),
+            "total_p10": round(total_p10, 2) if total_p10 is not None else None, "total_p90": round(total_p90, 2) if total_p90 is not None else None,
             "statut_modele": "prototype_non_calibre"
         })
         st.success("Analyse terminée. Elle est ajoutée à l'historique de cette session.")
