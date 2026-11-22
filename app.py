@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from engine import simulate_second_half
+from live_data import find_live_match, get_match_statistics, LiveDataError
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
 st.title("🏀 BPI V1.0 — Basketball Predictive Intelligence")
@@ -21,6 +22,49 @@ with st.sidebar:
     away = st.text_input("Équipe extérieure", "")
     st.info("Saisis uniquement les informations réellement observées à la mi-temps.")
     data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.")
+
+st.subheader("Recherche automatique d'un match LIVE")
+st.caption("La recherche utilise les noms exacts des équipes. Les statistiques récupérées sont affichées pour contrôle ; elles ne sont pas encore injectées dans le moteur prédictif.")
+if st.button("Rechercher ce match et ses statistiques LIVE"):
+    try:
+        api_key = st.secrets.get("DATASPORTSAPI_API_KEY", "")
+        if not api_key:
+            st.error("Clé API absente. Ajoute DATASPORTSAPI_API_KEY dans les Secrets de ton application Streamlit.")
+        elif not home.strip() or not away.strip():
+            st.error("Renseigne d'abord les deux noms d'équipes dans le panneau Match.")
+        else:
+            live_match = find_live_match(home, away, api_key)
+            st.session_state["bpi_live_match"] = live_match
+            periods = get_match_statistics(live_match["id"], api_key)
+            st.session_state["bpi_live_periods"] = periods
+            st.success("Match identifié dans le flux LIVE.")
+    except LiveDataError as exc:
+        st.error(str(exc))
+    except Exception as exc:
+        st.error(f"Erreur inattendue pendant la collecte : {exc}")
+
+if st.session_state.get("bpi_live_match"):
+    match = st.session_state["bpi_live_match"]
+    st.write(f"**{match.get('home', {}).get('name')}** {match.get('homeScore', {}).get('current')} – {match.get('awayScore', {}).get('current')} **{match.get('away', {}).get('name')}**")
+    st.caption(f"Compétition : {(match.get('league') or {}).get('name', 'indisponible')} · Statut : {(match.get('status') or {}).get('description', 'indisponible')} · ID fournisseur : {match.get('id')}")
+    periods = st.session_state.get("bpi_live_periods") or []
+    if periods:
+        for period in periods:
+            with st.expander(f"Statistiques — {period.get('period', 'période inconnue')}", expanded=(period.get("period") in ("period1", "period2", "all"))):
+                rows = []
+                for group in period.get("groups", []):
+                    for item in group.get("items", []):
+                        rows.append({
+                            "Statistique": item.get("name") or item.get("key"),
+                            "Domicile": (item.get("home") or {}).get("display", (item.get("home") or {}).get("value")),
+                            "Extérieur": (item.get("away") or {}).get("display", (item.get("away") or {}).get("value")),
+                        })
+                if rows:
+                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Aucune statistique disponible pour cette période.")
+    else:
+        st.warning("Le match est identifié, mais le fournisseur ne renvoie pas encore de statistiques par période.")
 
 st.subheader("Score à la mi-temps")
 c1, c2 = st.columns(2)
