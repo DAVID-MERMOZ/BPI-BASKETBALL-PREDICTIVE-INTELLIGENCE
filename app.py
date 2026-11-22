@@ -14,14 +14,17 @@ st.info("La collecte LIVE remplit automatiquement les champs lorsque le fourniss
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
 
-with st.sidebar:
-    st.header("Match")
-    competition = st.selectbox("Compétition", ["NBA", "EuroLeague", "Autre"])
-    game_date = st.date_input("Date du match")
+
+st.subheader("Match")
+st.caption("Renseigne les deux équipes pour préparer l'analyse ou rechercher le match en direct.")
+team_cols = st.columns(2)
+with team_cols[0]:
     home = st.text_input("Équipe à domicile", "", key="home_team")
+with team_cols[1]:
     away = st.text_input("Équipe extérieure", "", key="away_team")
-    st.info("Saisis uniquement les informations réellement observées à la mi-temps.")
-    data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.", key="data_verified")
+competition = st.selectbox("Compétition", ["NBA", "EuroLeague", "Autre"])
+game_date = st.date_input("Date du match")
+data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.", key="data_verified")
 
 st.subheader("Collecte automatique des données LIVE")
 st.caption("Saisis les deux équipes puis lance la collecte. BPI récupère le match et tente de remplir le score et les statistiques des deux premiers quart-temps.")
