@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from engine import simulate_second_half
-from live_data import find_live_match, get_match_statistics, LiveDataError
+from live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
 st.title("🏀 BPI V1.0 — Basketball Predictive Intelligence")
 st.caption("Prototype expérimental — aucune prédiction fiable sans données réelles et vérifiées.")
-st.warning("N’utilise jamais de valeurs inventées : les résultats seraient trompeurs. La collecte automatique LIVE n’est pas encore connectée.")
+st.info("La collecte LIVE remplit automatiquement les champs lorsque le fournisseur publie toutes les statistiques requises. Les données manquantes ne sont jamais remplacées par des zéros.")
 
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
@@ -18,39 +18,54 @@ with st.sidebar:
     st.header("Match")
     competition = st.selectbox("Compétition", ["NBA", "EuroLeague", "Autre"])
     game_date = st.date_input("Date du match")
-    home = st.text_input("Équipe à domicile", "")
-    away = st.text_input("Équipe extérieure", "")
+    home = st.text_input("Équipe à domicile", "", key="home_team")
+    away = st.text_input("Équipe extérieure", "", key="away_team")
     st.info("Saisis uniquement les informations réellement observées à la mi-temps.")
-    data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.")
+    data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.", key="data_verified")
 
-st.subheader("Recherche automatique d'un match LIVE")
-st.caption("La recherche utilise les noms exacts des équipes. Les statistiques récupérées sont affichées pour contrôle ; elles ne sont pas encore injectées dans le moteur prédictif.")
-if st.button("Rechercher ce match et ses statistiques LIVE"):
+st.subheader("Collecte automatique des données LIVE")
+st.caption("Saisis les deux équipes puis lance la collecte. BPI récupère le match et tente de remplir le score et les statistiques des deux premiers quart-temps.")
+if st.button("Collecter et remplir automatiquement", type="secondary"):
     try:
         api_key = st.secrets.get("DATASPORTSAPI_API_KEY", "")
         if not api_key:
-            st.error("Clé API absente. Ajoute DATASPORTSAPI_API_KEY dans les Secrets de ton application Streamlit.")
+            st.error("Clé API absente. Ajoute DATASPORTSAPI_API_KEY dans les Secrets Streamlit.")
         elif not home.strip() or not away.strip():
-            st.error("Renseigne d'abord les deux noms d'équipes dans le panneau Match.")
+            st.error("Renseigne les deux équipes dans le panneau Match.")
         else:
             live_match = find_live_match(home, away, api_key)
-            st.session_state["bpi_live_match"] = live_match
             periods = get_match_statistics(live_match["id"], api_key)
-            st.session_state["bpi_live_periods"] = periods
-            st.success("Match identifié dans le flux LIVE.")
+            first_half = extract_first_half_inputs(periods)
+            if not is_halftime(live_match):
+                st.session_state["bpi_live_match"] = live_match
+                st.session_state["bpi_live_periods"] = periods
+                st.warning("Match identifié et statistiques reçues, mais le fournisseur ne confirme pas la mi-temps. Les champs de score ne sont pas remplis pour éviter d'utiliser un score en cours comme score de pause.")
+            else:
+                home_score, away_score = current_score(live_match)
+                st.session_state["home_ht"] = home_score
+                st.session_state["away_ht"] = away_score
+                for side, prefix in (("home", "h"), ("away", "a")):
+                    for metric, value in first_half[side].items():
+                        st.session_state[f"{prefix}_{metric}"] = value
+                st.session_state["data_verified"] = True
+                st.session_state["bpi_live_match"] = live_match
+                st.session_state["bpi_live_periods"] = periods
+                st.session_state["bpi_data_filled"] = True
+                st.success("Données LIVE récupérées et champs préremplis. Vérifie-les avant de lancer l'analyse.")
     except LiveDataError as exc:
         st.error(str(exc))
     except Exception as exc:
-        st.error(f"Erreur inattendue pendant la collecte : {exc}")
+        st.error(f"Erreur pendant la collecte : {exc}")
 
 if st.session_state.get("bpi_live_match"):
     match = st.session_state["bpi_live_match"]
-    st.write(f"**{match.get('home', {}).get('name')}** {match.get('homeScore', {}).get('current')} – {match.get('awayScore', {}).get('current')} **{match.get('away', {}).get('name')}**")
+    st.write(f"**{match.get('home', {}).get('name')}** — **{match.get('away', {}).get('name')}**")
     st.caption(f"Compétition : {(match.get('league') or {}).get('name', 'indisponible')} · Statut : {(match.get('status') or {}).get('description', 'indisponible')} · ID fournisseur : {match.get('id')}")
     periods = st.session_state.get("bpi_live_periods") or []
     if periods:
-        for period in periods:
-            with st.expander(f"Statistiques — {period.get('period', 'période inconnue')}", expanded=(period.get("period") in ("period1", "period2", "all"))):
+        with st.expander("Contrôle des statistiques reçues du fournisseur", expanded=False):
+            for period in periods:
+                st.write(f"Période : {period.get('period', 'inconnue')}")
                 rows = []
                 for group in period.get("groups", []):
                     for item in group.get("items", []):
@@ -61,17 +76,15 @@ if st.session_state.get("bpi_live_match"):
                         })
                 if rows:
                     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-                else:
-                    st.info("Aucune statistique disponible pour cette période.")
-    else:
-        st.warning("Le match est identifié, mais le fournisseur ne renvoie pas encore de statistiques par période.")
+    if st.session_state.get("bpi_data_filled"):
+        st.success("Préremplissage effectué à partir des statistiques des quart-temps 1 et 2.")
 
 st.subheader("Score à la mi-temps")
 c1, c2 = st.columns(2)
 with c1:
-    home_ht = st.number_input(f"Points — {home}", min_value=0, max_value=100, value=0)
+    home_ht = st.number_input(f"Points — {home}", min_value=0, max_value=150, value=0, key="home_ht")
 with c2:
-    away_ht = st.number_input(f"Points — {away}", min_value=0, max_value=100, value=0)
+    away_ht = st.number_input(f"Points — {away}", min_value=0, max_value=150, value=0, key="away_ht")
 
 st.subheader("Statistiques de la première mi-temps")
 st.caption("Les champs inconnus peuvent rester à zéro. Vérifie les tentatives et réussites.")
