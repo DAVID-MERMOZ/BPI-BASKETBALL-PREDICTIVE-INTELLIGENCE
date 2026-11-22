@@ -79,6 +79,9 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
         h = {"fga": h_fga, "fgm": h_fgm, "3pa": h_3pa, "3pm": h_3pm, "tov": h_tov, "orb": h_orb, "ftm": h_ftm, "fta": h_fta}
         a = {"fga": a_fga, "fgm": a_fgm, "3pa": a_3pa, "3pm": a_3pm, "tov": a_tov, "orb": a_orb, "ftm": a_ftm, "fta": a_fta}
         result = simulate_second_half(home_ht, away_ht, h, a, sims)
+        # Compatibilité avec une ancienne version du moteur qui ne renvoyait pas total_mean.
+        total_mean = result.get("total_mean", result["home_mean"] + result["away_mean"])
+        total_median = result.get("total_median", total_mean)
         st.warning("Attention : simulation exploratoire, non entraînée et non calibrée. Ce n'est pas une probabilité fiable ni un conseil de pari.")
         m1, m2, m3 = st.columns(3)
         m1.metric(f"Victoire {home}", f"{result['home_win']:.1f}%")
@@ -86,7 +89,7 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
         m3.metric("Égalité à la fin du temps réglementaire", f"{result['tie']:.1f}%")
         st.subheader("Projection du score final")
         st.write(f"**{home} : {result['home_mean']:.1f} points** · **{away} : {result['away_mean']:.1f} points**")
-        st.write(f"Total moyen : **{result['total_mean']:.1f}** · médian : **{result['total_median']:.0f}**")
+        st.write(f"Total moyen : **{total_mean:.1f}** · médian : **{total_median:.0f}**")
         st.write(f"Intervalle exploratoire du total (10e–90e percentile) : **{result['total_p10']:.0f} à {result['total_p90']:.0f} points**")
         st.write(f"Intervalle exploratoire de la marge domicile (10e–90e percentile) : **{result['margin_p10']:.0f} à {result['margin_p90']:.0f} points**")
         st.subheader("Diagnostic du rythme et de l'efficacité")
@@ -101,7 +104,7 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
             "proba_victoire_exterieur_pct": round(result["away_win"], 2),
             "score_final_moyen_domicile": round(result["home_mean"], 2),
             "score_final_moyen_exterieur": round(result["away_mean"], 2),
-            "total_moyen": round(result["total_mean"], 2),
+            "total_moyen": round(total_mean, 2),
             "total_p10": round(result["total_p10"], 2), "total_p90": round(result["total_p90"], 2),
             "statut_modele": "prototype_non_calibre"
         })
