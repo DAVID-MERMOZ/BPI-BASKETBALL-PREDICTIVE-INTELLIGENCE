@@ -7,7 +7,8 @@ from engine import simulate_second_half
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
 st.title("🏀 BPI V1.0 — Basketball Predictive Intelligence")
-st.caption("Prototype expérimental — statistiques saisies manuellement à la mi-temps.")
+st.caption("Prototype expérimental — aucune prédiction fiable sans données réelles et vérifiées.")
+st.warning("N’utilise jamais de valeurs inventées : les résultats seraient trompeurs. La collecte automatique LIVE n’est pas encore connectée.")
 
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
@@ -16,16 +17,17 @@ with st.sidebar:
     st.header("Match")
     competition = st.selectbox("Compétition", ["NBA", "EuroLeague", "Autre"])
     game_date = st.date_input("Date du match")
-    home = st.text_input("Équipe à domicile", "Équipe A")
-    away = st.text_input("Équipe extérieure", "Équipe B")
-    st.info("Saisis uniquement les informations connues à la mi-temps.")
+    home = st.text_input("Équipe à domicile", "")
+    away = st.text_input("Équipe extérieure", "")
+    st.info("Saisis uniquement les informations réellement observées à la mi-temps.")
+    data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.")
 
 st.subheader("Score à la mi-temps")
 c1, c2 = st.columns(2)
 with c1:
-    home_ht = st.number_input(f"Points — {home}", min_value=0, max_value=100, value=54)
+    home_ht = st.number_input(f"Points — {home}", min_value=0, max_value=100, value=0)
 with c2:
-    away_ht = st.number_input(f"Points — {away}", min_value=0, max_value=100, value=49)
+    away_ht = st.number_input(f"Points — {away}", min_value=0, max_value=100, value=0)
 
 st.subheader("Statistiques de la première mi-temps")
 st.caption("Les champs inconnus peuvent rester à zéro. Vérifie les tentatives et réussites.")
@@ -35,31 +37,31 @@ def number(label, value, key, maxv=100):
     return st.number_input(label, min_value=0, max_value=maxv, value=value, key=key)
 
 with cols[0]:
-    h_fga = number(f"{home} tirs tentés", 42, "h_fga")
-    a_fga = number(f"{away} tirs tentés", 40, "a_fga")
+    h_fga = number(f"{home} tirs tentés", 0, "h_fga")
+    a_fga = number(f"{away} tirs tentés", 0, "a_fga")
 with cols[1]:
-    h_fgm = number(f"{home} tirs réussis", 21, "h_fgm")
-    a_fgm = number(f"{away} tirs réussis", 19, "a_fgm")
+    h_fgm = number(f"{home} tirs réussis", 0, "h_fgm")
+    a_fgm = number(f"{away} tirs réussis", 0, "a_fgm")
 with cols[2]:
-    h_3pa = number(f"{home} tirs à 3 pts tentés", 17, "h_3pa", 80)
-    a_3pa = number(f"{away} tirs à 3 pts tentés", 16, "a_3pa", 80)
+    h_3pa = number(f"{home} tirs à 3 pts tentés", 0, "h_3pa", 80)
+    a_3pa = number(f"{away} tirs à 3 pts tentés", 0, "a_3pa", 80)
 with cols[3]:
-    h_3pm = number(f"{home} tirs à 3 pts réussis", 7, "h_3pm", 80)
-    a_3pm = number(f"{away} tirs à 3 pts réussis", 6, "a_3pm", 80)
+    h_3pm = number(f"{home} tirs à 3 pts réussis", 0, "h_3pm", 80)
+    a_3pm = number(f"{away} tirs à 3 pts réussis", 0, "a_3pm", 80)
 
 cols = st.columns(4)
 with cols[0]:
-    h_tov = number(f"{home} pertes de balle", 6, "h_tov", 40)
-    a_tov = number(f"{away} pertes de balle", 7, "a_tov", 40)
+    h_tov = number(f"{home} pertes de balle", 0, "h_tov", 40)
+    a_tov = number(f"{away} pertes de balle", 0, "a_tov", 40)
 with cols[1]:
-    h_orb = number(f"{home} rebonds offensifs", 5, "h_orb", 30)
-    a_orb = number(f"{away} rebonds offensifs", 4, "a_orb", 30)
+    h_orb = number(f"{home} rebonds offensifs", 0, "h_orb", 30)
+    a_orb = number(f"{away} rebonds offensifs", 0, "a_orb", 30)
 with cols[2]:
-    h_ftm = number(f"{home} lancers francs réussis", 5, "h_ftm", 50)
-    a_ftm = number(f"{away} lancers francs réussis", 5, "a_ftm", 50)
+    h_ftm = number(f"{home} lancers francs réussis", 0, "h_ftm", 50)
+    a_ftm = number(f"{away} lancers francs réussis", 0, "a_ftm", 50)
 with cols[3]:
-    h_fta = number(f"{home} lancers francs tentés", 6, "h_fta", 60)
-    a_fta = number(f"{away} lancers francs tentés", 6, "a_fta", 60)
+    h_fta = number(f"{home} lancers francs tentés", 0, "h_fta", 60)
+    a_fta = number(f"{away} lancers francs tentés", 0, "a_fta", 60)
 
 sims = st.select_slider("Nombre de simulations", options=[1000, 5000, 10000, 25000], value=10000)
 
@@ -71,7 +73,15 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
         h_fta < h_ftm or a_fta < a_ftm or
         h_3pa > h_fga or a_3pa > a_fga
     )
-    if invalid:
+    stats_values = [h_fga, a_fga, h_fgm, a_fgm, h_3pa, a_3pa, h_3pm, a_3pm,
+                    h_tov, a_tov, h_orb, a_orb, h_ftm, a_ftm, h_fta, a_fta]
+    if not data_verified:
+        st.error("Analyse bloquée : confirme d'abord que les données saisies sont réelles et vérifiées.")
+    elif home_ht == 0 and away_ht == 0:
+        st.error("Score de mi-temps manquant : renseigne le score réel.")
+    elif all(v == 0 for v in stats_values):
+        st.error("Statistiques manquantes : aucune simulation ne sera faite avec des statistiques vides.")
+    elif invalid:
         st.error("Statistiques incohérentes : vérifie les tirs et les lancers francs.")
     elif not home.strip() or not away.strip() or home.strip() == away.strip():
         st.error("Renseigne deux noms d'équipes différents.")
