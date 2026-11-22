@@ -47,7 +47,6 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
                 for side, prefix in (("home", "h"), ("away", "a")):
                     for metric, value in first_half[side].items():
                         st.session_state[f"{prefix}_{metric}"] = value
-                st.session_state["data_verified"] = True
                 st.session_state["bpi_live_match"] = live_match
                 st.session_state["bpi_live_periods"] = periods
                 st.session_state["bpi_data_filled"] = True
@@ -132,7 +131,7 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
     )
     stats_values = [h_fga, a_fga, h_fgm, a_fgm, h_3pa, a_3pa, h_3pm, a_3pm,
                     h_tov, a_tov, h_orb, a_orb, h_ftm, a_ftm, h_fta, a_fta]
-    if not data_verified:
+    if not (data_verified or st.session_state.get("bpi_data_filled", False)):
         st.error("Analyse bloquée : confirme d'abord que les données saisies sont réelles et vérifiées.")
     elif home_ht == 0 and away_ht == 0:
         st.error("Score de mi-temps manquant : renseigne le score réel.")
