@@ -85,7 +85,9 @@ def extract_first_half_inputs(periods):
     by_period = {p.get("period"): p for p in periods or []}
     first_two = [by_period.get("period1"), by_period.get("period2")]
     if not all(first_two):
-        raise LiveDataError("Les statistiques des deux premiers quart-temps ne sont pas encore disponibles. Aucun champ n'a été rempli.")
+        received = [str(p.get("period")) for p in periods or [] if p.get("period")]
+        detail = ", ".join(received) if received else "aucune période"
+        raise LiveDataError("Statistiques des deux premiers quart-temps indisponibles. Périodes reçues : " + detail + ". Aucun champ n'a été rempli. Consulte le panneau de diagnostic et réessaie après la mise à jour du fournisseur.")
     aliases = {
         "fga": "fieldGoalsAttempted",
         "fgm": "fieldGoalsMade",
