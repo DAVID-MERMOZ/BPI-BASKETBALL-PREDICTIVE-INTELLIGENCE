@@ -4,7 +4,20 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from engine import simulate_second_half
-from bpi_live_data import (find_live_match, get_live_matches, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+import bpi_live_data as live_data
+from bpi_live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+
+# Compatibilité avec une ancienne copie du module parfois conservée au déploiement.
+# La fonction est normalement exportée par bpi_live_data.py ; ce repli évite
+# que l'application entière plante si Streamlit charge une version antérieure.
+def get_live_matches(api_key):
+    if hasattr(live_data, "get_live_matches"):
+        return live_data.get_live_matches(api_key)
+    payload = live_data._get("/livescores", api_key, {"sport": "basketball"})
+    data = payload.get("data") or []
+    if not isinstance(data, list):
+        raise LiveDataError("Format inattendu du tableau LIVE : la propriété data n'est pas une liste.")
+    return data
 from bpi_storage import init_db, save_prediction, list_predictions, record_final_score, export_database_bytes
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
