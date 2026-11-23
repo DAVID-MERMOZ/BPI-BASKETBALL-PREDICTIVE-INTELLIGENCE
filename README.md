@@ -16,7 +16,7 @@ streamlit run app.py
 ```
 
 ## Limites importantes
-Le moteur actuel est un prototype à hypothèses simplifiées : il n'est pas entraîné sur des matchs historiques et ses probabilités ne sont pas calibrées. Les sorties ne constituent pas des prévisions fiables ni des conseils de pari. L'historique en mémoire de session n'est pas une base persistante : télécharge le CSV pour le conserver. Aucune API live n'est encore connectée.
+Le moteur actuel est un prototype à hypothèses simplifiées : il n'est pas entraîné sur des matchs historiques et ses probabilités ne sont pas calibrées. Les sorties ne constituent pas des prévisions fiables ni des conseils de pari. L'historique en mémoire de session n'est pas une base persistante : télécharge le CSV pour le conserver. Un connecteur LIVE DataSportsAPI est présent pour rechercher les matchs en cours et récupérer les statistiques disponibles. Sa couverture dépend de la compétition et du fournisseur; chaque réponse doit être vérifiée en conditions réelles.
 
 Ne jamais utiliser les statistiques finales comme variables d'entrée d'une prédiction à la mi-temps : elles servent uniquement de cibles historiques.
 
@@ -26,7 +26,7 @@ BPI vise les matchs de basketball de toutes les compétitions couvertes par des 
 La stratégie cible est un modèle global multi-compétitions, avec prise en compte des différences de ligue, saison, format et niveau de jeu. Lorsque le volume de données le permet, des ajustements hiérarchiques ou spécifiques aux compétitions pourront corriger les écarts de rythme et d'efficacité sans entraîner un modèle isolé pour chaque championnat. Une compétition peu représentée ne sera pas déclarée calibrée sur la seule base des résultats d'autres ligues.
 
 ## Feuille de route
-1. Collecter des historiques fiables de nombreuses compétitions et saisons, avec les seules variables réellement disponibles à la mi-temps; enregistrer la compétition, le format et la source.
+1. Collecter des historiques fiables de nombreuses compétitions et saisons, avec les seules variables réellement disponibles à la mi-temps; enregistrer la compétition, le format, la source et les métadonnées nécessaires à la comparabilité. Le schéma est défini dans `data/halftime_training_schema.csv`.
 2. Vérifier la comparabilité des règles et formats (durée des périodes, prolongations, compétitions masculines/féminines, niveaux) et séparer les cas incompatibles si nécessaire.
 3. Persister matchs, prédictions horodatées et résultats dans une base durable.
 4. Construire une validation chronologique hors échantillon, globale et ventilée par compétition, saison et niveau de couverture, sans fuite de données.
