@@ -40,6 +40,15 @@ def _get(path, api_key, params=None):
         raise LiveDataError("Réponse API illisible.") from exc
 
 
+def get_live_matches(api_key):
+    """Retourne le tableau LIVE basket complet, sans filtrage fragile par nom."""
+    payload = _get("/livescores", api_key, {"sport": "basketball"})
+    data = payload.get("data") or []
+    if not isinstance(data, list):
+        raise LiveDataError("Format inattendu du tableau LIVE : la propriété data n'est pas une liste.")
+    return data
+
+
 def find_live_match(home_name, away_name, api_key):
     """Recherche une seule correspondance exacte dans le flux basket en direct."""
     payload = _get("/livescores", api_key, {"sport": "basketball"})
