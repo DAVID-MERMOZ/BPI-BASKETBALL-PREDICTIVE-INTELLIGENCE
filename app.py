@@ -10,7 +10,26 @@ from engine import simulate_second_half
 # fichier bpi_live_data.py pendant le redéploiement.
 import bpi_live_data as live_data
 find_live_match = live_data.find_live_match
-extract_first_half_inputs = live_data.extract_first_half_inputs
+_extract_first_half_inputs_legacy = live_data.extract_first_half_inputs
+
+def extract_first_half_inputs(periods, allow_all_period=False):
+    """Compatibilité entre versions du connecteur pendant les redéploiements."""
+    try:
+        return _extract_first_half_inputs_legacy(periods, allow_all_period=allow_all_period)
+    except TypeError as exc:
+        if "allow_all_period" not in str(exc):
+            raise
+        # Ancien connecteur : convertir le cumul 'all' en une seule période
+        # logique, avec une deuxième période vide pour éviter de doubler les valeurs.
+        aggregate = next((p for p in (periods or []) if p.get("period") == "all"), None)
+        if not (allow_all_period and aggregate):
+            return _extract_first_half_inputs_legacy(periods)
+        compatible_periods = [
+            {"period": "period1", "groups": aggregate.get("groups") or []},
+            {"period": "period2", "groups": []},
+        ]
+        return _extract_first_half_inputs_legacy(compatible_periods)
+
 current_score = live_data.current_score
 is_halftime = live_data.is_halftime
 LiveDataError = live_data.LiveDataError
