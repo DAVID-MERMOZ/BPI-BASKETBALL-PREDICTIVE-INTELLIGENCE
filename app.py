@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 import streamlit as st
+from bpi_validation import validate_halftime_data
 from engine import simulate_second_half
 import bpi_live_data as live_data
 from bpi_live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
@@ -190,6 +191,17 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
     else:
         h = {"fga": h_fga, "fgm": h_fgm, "3pa": h_3pa, "3pm": h_3pm, "tov": h_tov, "orb": h_orb, "ftm": h_ftm, "fta": h_fta}
         a = {"fga": a_fga, "fgm": a_fgm, "3pa": a_3pa, "3pm": a_3pm, "tov": a_tov, "orb": a_orb, "ftm": a_ftm, "fta": a_fta}
+        quality_errors, quality_warnings = validate_halftime_data(home_ht, away_ht, h, a)
+        if quality_errors:
+            for message in quality_errors:
+                st.error(message)
+            st.stop()
+        if quality_warnings:
+            for message in quality_warnings:
+                st.warning(message)
+            if not data_verified:
+                st.error("Analyse suspendue : confirme explicitement les écarts signalés après vérification auprès de la source.")
+                st.stop()
         result = simulate_second_half(home_ht, away_ht, h, a, sims)
         # Compatibilité avec une ancienne version du moteur qui ne renvoyait pas total_mean.
         # Normalisation défensive : l'interface reste compatible avec plusieurs schémas du moteur.
@@ -227,6 +239,10 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
             "date_match": str(game_date), "competition": competition,
             "domicile": home, "exterieur": away,
             "score_pause_domicile": home_ht, "score_pause_exterieur": away_ht,
+            "statistiques_mi_temps_domicile": h,
+            "statistiques_mi_temps_exterieur": a,
+            "source_donnees": "DataSportsAPI_LIVE" if st.session_state.get("bpi_data_filled", False) else "saisie_manuelle_verifiee",
+            "qualite_donnees_avertissements": quality_warnings,
             "simulations": sims, "proba_victoire_domicile_pct": round(home_win, 2) if home_win is not None else None,
             "proba_victoire_exterieur_pct": round(away_win, 2) if away_win is not None else None,
             "score_final_moyen_domicile": round(home_mean, 2),
