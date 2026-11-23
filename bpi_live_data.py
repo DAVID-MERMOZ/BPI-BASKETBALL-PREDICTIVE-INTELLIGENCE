@@ -178,9 +178,20 @@ def extract_first_half_inputs(periods, allow_all_period=False):
                     found[side] = True
         for side in ("home", "away"):
             result[side][target] = totals[side] if found[side] else None
-    missing = [f"{side}.{key}" for side in ("home", "away") for key, value in result[side].items() if value is None]
-    if missing:
-        raise LiveDataError("Données statistiques incomplètes : " + ", ".join(missing) + ". Les champs ne seront pas remplis partiellement.")
+    # TOV et ORB sont facultatifs : certaines compétitions ne les publient pas.
+    # Leur absence est signalée; le moteur utilisera une approximation neutre (net = 0).
+    optional = {"tov", "orb"}
+    missing_required = [
+        f"{side}.{key}" for side in ("home", "away")
+        for key, value in result[side].items()
+        if value is None and key not in optional
+    ]
+    if missing_required:
+        raise LiveDataError("Données essentielles incomplètes : " + ", ".join(missing_required) + ". Aucun préremplissage effectué.")
+    for side in ("home", "away"):
+        for key in optional:
+            if result[side][key] is None:
+                result[side][key] = 0
     return result
 
 
