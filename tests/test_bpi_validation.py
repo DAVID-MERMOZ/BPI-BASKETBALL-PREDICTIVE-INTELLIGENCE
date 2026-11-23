@@ -27,9 +27,19 @@ class HalftimeValidationTests(unittest.TestCase):
 
     def test_missing_stat_is_rejected(self):
         bad = dict(self.home)
-        del bad["tov"]
+        del bad["fga"]
         errors, _ = validate_halftime_data(37, 24, bad, self.away)
-        self.assertTrue(any("statistiques manquantes" in e for e in errors))
+        self.assertTrue(any("statistiques essentielles manquantes" in e for e in errors))
+
+    def test_missing_optional_stats_are_warnings(self):
+        home = dict(self.home)
+        away = dict(self.away)
+        del home["tov"]
+        del away["orb"]
+        errors, warnings = validate_halftime_data(29, 24, home, away)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("tov indisponible" in w for w in warnings))
+        self.assertTrue(any("orb indisponible" in w for w in warnings))
 
 
 if __name__ == "__main__":
