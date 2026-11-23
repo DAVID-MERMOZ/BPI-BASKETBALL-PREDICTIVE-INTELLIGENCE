@@ -6,7 +6,7 @@ import streamlit as st
 from bpi_validation import validate_halftime_data
 from engine import simulate_second_half
 import bpi_live_data as live_data
-from bpi_live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+from bpi_live_data import (find_live_match, get_match_statistics_diagnostic, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
 
 # Compatibilité avec une ancienne copie du module parfois conservée au déploiement.
 # La fonction est normalement exportée par bpi_live_data.py ; ce repli évite
@@ -77,11 +77,11 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
             st.error("Renseigne les deux équipes dans le panneau Match.")
         else:
             live_match = selected_live if selected_live is not None else find_live_match(home, away, api_key)
-            periods = get_match_statistics(live_match["id"], api_key)
-            # Conserver le match et la réponse brute même si les statistiques
-            # de période sont absentes : le panneau diagnostic doit rester visible.
+            collection = get_match_statistics_diagnostic(live_match["id"], api_key)
+            periods = collection["periods"]
             st.session_state["bpi_live_match"] = live_match
             st.session_state["bpi_live_periods"] = periods
+            st.session_state["bpi_live_diagnostic"] = collection["diagnostic"]
             first_half = extract_first_half_inputs(periods)
             if not is_halftime(live_match):
                 st.session_state["bpi_live_match"] = live_match
@@ -108,9 +108,16 @@ if st.session_state.get("bpi_live_match"):
     st.write(f"**{match.get('home', {}).get('name')}** — **{match.get('away', {}).get('name')}**")
     st.caption(f"Compétition : {(match.get('league') or {}).get('name', 'indisponible')} · Statut : {(match.get('status') or {}).get('description', 'indisponible')} · ID fournisseur : {match.get('id')}")
     periods = st.session_state.get("bpi_live_periods") or []
-    if periods:
-        with st.expander("Contrôle des statistiques reçues du fournisseur", expanded=False):
-            for period in periods:
+    diagnostic = st.session_state.get("bpi_live_diagnostic") or {}
+    with st.expander("Diagnostic détaillé de la collecte fournisseur", expanded=not bool(periods)):
+        st.write(f"Nombre de périodes reçues : {len(periods)}")
+        st.write("Périodes détectées : " + (", ".join(diagnostic.get("period_names", [])) or "aucune"))
+        st.write("Clés de la réponse : " + (", ".join(diagnostic.get("top_level_keys", [])) or "indisponibles"))
+        st.write("Clés de l'objet data : " + (", ".join(diagnostic.get("data_keys", [])) or "aucune"))
+        st.write("Type du champ periods : " + str(diagnostic.get("periods_type", "diagnostic indisponible")))
+        if not periods:
+            st.warning("Le fournisseur a répondu sans statistiques par période. Cela peut signifier que les statistiques ne sont pas encore publiées pour ce match ou que cette compétition n'est pas couverte à ce niveau. Les champs restent inchangés.")
+        for period in periods:
                 st.write(f"Période : {period.get('period', 'inconnue')}")
                 rows = []
                 for group in period.get("groups", []):
