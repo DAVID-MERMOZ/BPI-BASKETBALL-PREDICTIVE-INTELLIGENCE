@@ -73,10 +73,48 @@ def find_live_match(home_name, away_name, api_key):
     return matches[0]
 
 
-def get_match_statistics(fixture_id, api_key):
+def get_match_statistics_diagnostic(fixture_id, api_key):
+    """Retourne les périodes et un diagnostic structurel sans exposer de données sensibles."""
     payload = _get(f"/fixtures/{int(fixture_id)}/statistics", api_key)
-    data = payload.get("data") or {}
-    return data.get("periods") or []
+    if not isinstance(payload, dict):
+        raise LiveDataError("Réponse statistiques inattendue : l'objet JSON principal n'est pas un dictionnaire.")
+    data = payload.get("data")
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        return {
+            "periods": [],
+            "diagnostic": {
+                "top_level_keys": sorted(str(k) for k in payload.keys()),
+                "data_type": type(data).__name__,
+                "data_keys": [],
+                "periods_type": "absent",
+                "period_names": [],
+            },
+        }
+    periods = data.get("periods")
+    valid_periods = periods if isinstance(periods, list) else []
+    names = [
+        str(p.get("period", "inconnu"))
+        for p in valid_periods
+        if isinstance(p, dict)
+    ]
+    return {
+        "periods": valid_periods,
+        "diagnostic": {
+            "top_level_keys": sorted(str(k) for k in payload.keys()),
+            "data_type": type(data).__name__,
+            "data_keys": sorted(str(k) for k in data.keys()),
+            "periods_type": type(periods).__name__ if periods is not None else "absent",
+            "period_names": names,
+            "period_count": len(valid_periods),
+        },
+    }
+
+
+def get_match_statistics(fixture_id, api_key):
+    """Compatibilité : retourne uniquement la liste normalisée des périodes."""
+    return get_match_statistics_diagnostic(fixture_id, api_key)["periods"]
 
 
 def _period_values(period):
@@ -96,7 +134,7 @@ def extract_first_half_inputs(periods):
     if not all(first_two):
         received = [str(p.get("period")) for p in periods or [] if p.get("period")]
         detail = ", ".join(received) if received else "aucune période"
-        raise LiveDataError("Statistiques des deux premiers quart-temps indisponibles. Périodes reçues : " + detail + ". Aucun champ n'a été rempli. Consulte le panneau de diagnostic et réessaie après la mise à jour du fournisseur.")
+        raise LiveDataError("Statistiques des deux premiers quart-temps indisponibles. Périodes reçues : " + detail + ". Aucun champ n'a été rempli. Le fournisseur peut ne pas encore publier ces statistiques pour ce match.")
     aliases = {
         "fga": "fieldGoalsAttempted",
         "fgm": "fieldGoalsMade",
