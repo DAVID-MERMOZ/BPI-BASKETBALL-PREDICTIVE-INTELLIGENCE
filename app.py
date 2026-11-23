@@ -5,12 +5,14 @@ import pandas as pd
 import streamlit as st
 from engine import simulate_second_half
 from bpi_live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+from bpi_storage import init_db, save_prediction, list_predictions, record_final_score, export_database_bytes
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
 st.title("🏀 BPI V1.0 — Basketball Predictive Intelligence")
 st.caption("Prototype expérimental — aucune prédiction fiable sans données réelles et vérifiées.")
 st.info("La collecte LIVE remplit automatiquement les champs lorsque le fournisseur publie toutes les statistiques requises. Les données manquantes ne sont jamais remplacées par des zéros.")
 
+init_db()
 if "prediction_history" not in st.session_state:
     st.session_state.prediction_history = []
 
@@ -179,7 +181,7 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
         st.subheader("Diagnostic du rythme et de l'efficacité")
         st.write(f"Possessions estimées à la pause : {home_possessions:.1f} — {away_possessions:.1f}. Rythme partagé supposé pour la seconde mi-temps : {pace_mean:.1f} possessions." if None not in (home_possessions, away_possessions, pace_mean) else "Diagnostic des possessions : indisponible dans cette version du moteur.")
         st.write(f"Efficacité par possession supposée : {home} {home_ppp:.2f} · {away} {away_ppp:.2f} points." if home_ppp is not None and away_ppp is not None else "Efficacité par possession : indisponible dans cette version du moteur.")
-        st.session_state.prediction_history.append({
+        prediction_record = {
             "horodatage_utc": datetime.now(timezone.utc).isoformat(),
             "date_match": str(game_date), "competition": competition,
             "domicile": home, "exterieur": away,
@@ -191,11 +193,49 @@ if st.button("Analyser la deuxième mi-temps", type="primary"):
             "total_moyen": round(total_mean, 2),
             "total_p10": round(total_p10, 2) if total_p10 is not None else None, "total_p90": round(total_p90, 2) if total_p90 is not None else None,
             "statut_modele": "prototype_non_calibre"
-        })
-        st.success("Analyse terminée. Elle est ajoutée à l'historique de cette session.")
+        }
+        prediction_id = save_prediction(prediction_record)
+        prediction_record["id_stockage"] = prediction_id
+        st.session_state.prediction_history.append(prediction_record)
+        st.success(f"Analyse enregistrée dans la base locale BPI (ID {prediction_id}).")
         st.caption("Les hypothèses restent simplifiées : pas de fautes d'équipe, rotations, blessures, play-by-play ni ajustements tactiques.")
 
 st.divider()
+st.subheader("Base historique BPI")
+st.caption("Les analyses sont enregistrées dans SQLite. Sur Streamlit Cloud, le disque local peut être réinitialisé lors d'un redémarrage ou redéploiement : télécharge régulièrement une sauvegarde.")
+stored = list_predictions()
+if stored:
+    display_rows = []
+    for row in stored:
+        display_rows.append({
+            "ID": row["id"], "Date": row["game_date"], "Compétition": row["competition"],
+            "Domicile": row["home_team"], "Extérieur": row["away_team"],
+            "Pause": str(row["halftime_home"]) + "-" + str(row["halftime_away"]),
+            "Score final": (str(row["final_home"]) + "-" + str(row["final_away"]) if row["final_home"] is not None else "À saisir")
+        })
+    st.dataframe(pd.DataFrame(display_rows), use_container_width=True, hide_index=True)
+    pending = [row for row in stored if row["final_home"] is None]
+    if pending:
+        st.markdown("**Enregistrer le résultat final d'un match terminé**")
+        options = {"ID " + str(r["id"]) + " — " + r["home_team"] + " vs " + r["away_team"] + " (" + str(r["game_date"]) + ")": r for r in pending}
+        selected_label = st.selectbox("Analyse concernée", list(options.keys()))
+        selected = options[selected_label]
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            final_home = st.number_input("Score final — " + selected["home_team"], min_value=0, max_value=250, value=0, key="db_final_home")
+        with rc2:
+            final_away = st.number_input("Score final — " + selected["away_team"], min_value=0, max_value=250, value=0, key="db_final_away")
+        if st.button("Enregistrer le score final"):
+            if final_home == 0 and final_away == 0:
+                st.error("Saisis le score final réel.")
+            elif record_final_score(selected["id"], final_home, final_away):
+                st.success("Résultat final enregistré comme cible historique, jamais comme variable d'entrée à la mi-temps.")
+                st.rerun()
+    db_bytes = export_database_bytes()
+    st.download_button("Télécharger la sauvegarde complète SQLite", data=db_bytes, file_name="bpi_history.sqlite3", mime="application/vnd.sqlite3")
+else:
+    st.info("La base est prête, mais aucune prédiction n'y est encore enregistrée.")
+
 st.subheader("Historique des analyses de cette session")
 if st.session_state.prediction_history:
     history = pd.DataFrame(st.session_state.prediction_history)
