@@ -5,7 +5,6 @@ import pandas as pd
 import streamlit as st
 from bpi_validation import validate_halftime_data
 from engine import simulate_second_half
-import bpi_live_data as live_data
 # Import du module sans importer directement une fonction récente :
 # cela évite un ImportError si Streamlit Cloud charge temporairement un ancien
 # fichier bpi_live_data.py pendant le redéploiement.
@@ -93,14 +92,19 @@ if live_list:
         live_options[label] = game
     selected_label = st.selectbox("Sélectionne le match à collecter", list(live_options.keys()))
     selected_live = live_options[selected_label]
+    # La sélection LIVE fournit elle-même les noms : aucune saisie manuelle requise.
+    selected_home_name = (selected_live.get("home") or {}).get("name")
+    selected_away_name = (selected_live.get("away") or {}).get("name")
+    if selected_home_name and selected_away_name:
+        home, away = selected_home_name, selected_away_name
 
 if st.button("Collecter et remplir automatiquement", type="secondary"):
     try:
         api_key = st.secrets.get("DATASPORTSAPI_API_KEY", "")
         if not api_key:
             st.error("Clé API absente. Ajoute DATASPORTSAPI_API_KEY dans les Secrets Streamlit.")
-        elif not home.strip() or not away.strip():
-            st.error("Renseigne les deux équipes dans le panneau Match.")
+        elif selected_live is None and (not home.strip() or not away.strip()):
+            st.error("Sélectionne un match LIVE ou renseigne manuellement les deux équipes.")
         else:
             live_match = selected_live if selected_live is not None else find_live_match(home, away, api_key)
             collection = get_match_statistics_diagnostic(live_match["id"], api_key)
