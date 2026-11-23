@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import streamlit as st
 from engine import simulate_second_half
-from bpi_live_data import (find_live_match, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+from bpi_live_data import (find_live_match, get_live_matches, get_match_statistics, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
 from bpi_storage import init_db, save_prediction, list_predictions, record_final_score, export_database_bytes
 
 st.set_page_config(page_title="BPI V1.0", page_icon="🏀", layout="wide")
@@ -29,7 +29,31 @@ game_date = st.date_input("Date du match")
 data_verified = st.checkbox("Je confirme que le score et toutes les statistiques saisies proviennent de données réelles vérifiées.", key="data_verified")
 
 st.subheader("Collecte automatique des données LIVE")
-st.caption("Saisis les deux équipes puis lance la collecte. BPI récupère le match et tente de remplir le score et les statistiques des deux premiers quart-temps.")
+st.caption("Commence par charger le tableau des matchs LIVE. Tu pourras sélectionner directement une rencontre, sans dépendre de la correspondance exacte des noms.")
+if st.button("Afficher les matchs de basketball en direct"):
+    try:
+        api_key = st.secrets.get("DATASPORTSAPI_API_KEY", "")
+        if not api_key:
+            st.error("Clé API absente. Ajoute DATASPORTSAPI_API_KEY dans les Secrets Streamlit.")
+        else:
+            st.session_state["bpi_live_list"] = get_live_matches(api_key)
+            st.success(f"{len(st.session_state['bpi_live_list'])} match(s) LIVE renvoyé(s) par le fournisseur.")
+    except LiveDataError as exc:
+        st.error(str(exc))
+
+live_list = st.session_state.get("bpi_live_list") or []
+selected_live = None
+if live_list:
+    live_options = {}
+    for game in live_list:
+        hn = (game.get("home") or {}).get("name") or "Domicile inconnu"
+        an = (game.get("away") or {}).get("name") or "Extérieur inconnu"
+        league = (game.get("league") or {}).get("name") or "Compétition inconnue"
+        label = f"{hn} vs {an} — {league} — ID {game.get('id')}"
+        live_options[label] = game
+    selected_label = st.selectbox("Sélectionne le match à collecter", list(live_options.keys()))
+    selected_live = live_options[selected_label]
+
 if st.button("Collecter et remplir automatiquement", type="secondary"):
     try:
         api_key = st.secrets.get("DATASPORTSAPI_API_KEY", "")
@@ -38,7 +62,7 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
         elif not home.strip() or not away.strip():
             st.error("Renseigne les deux équipes dans le panneau Match.")
         else:
-            live_match = find_live_match(home, away, api_key)
+            live_match = selected_live if selected_live is not None else find_live_match(home, away, api_key)
             periods = get_match_statistics(live_match["id"], api_key)
             # Conserver le match et la réponse brute même si les statistiques
             # de période sont absentes : le panneau diagnostic doit rester visible.
