@@ -4,7 +4,8 @@ Les contrôles distinguent les impossibilités mathématiques (erreurs bloquante
 des écarts de cohérence du score (avertissements à examiner).
 """
 
-REQUIRED_STATS = ("fga", "fgm", "3pa", "3pm", "tov", "orb", "ftm", "fta")
+REQUIRED_STATS = ("fga", "fgm", "3pa", "3pm", "ftm", "fta")
+OPTIONAL_STATS = ("tov", "orb")
 
 
 def validate_team_stats(stats, side="équipe"):
@@ -12,9 +13,13 @@ def validate_team_stats(stats, side="équipe"):
     warnings = []
     missing = [key for key in REQUIRED_STATS if key not in stats or stats[key] is None]
     if missing:
-        return [f"{side}: statistiques manquantes ({', '.join(missing)})."], warnings
+        return [f"{side}: statistiques essentielles manquantes ({', '.join(missing)})."], warnings
+    for key in OPTIONAL_STATS:
+        if key not in stats or stats[key] is None:
+            warnings.append(f"{side}: {key} indisponible; l'estimation des possessions utilisera une approximation sans correction rebonds offensifs/pertes de balle.")
+            stats[key] = 0
 
-    for key in REQUIRED_STATS:
+    for key in REQUIRED_STATS + OPTIONAL_STATS:
         value = stats[key]
         if not isinstance(value, (int, float)) or isinstance(value, bool):
             errors.append(f"{side}: {key} doit être numérique.")
