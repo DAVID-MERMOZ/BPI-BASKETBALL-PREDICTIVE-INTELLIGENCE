@@ -6,7 +6,33 @@ import streamlit as st
 from bpi_validation import validate_halftime_data
 from engine import simulate_second_half
 import bpi_live_data as live_data
-from bpi_live_data import (find_live_match, get_match_statistics_diagnostic, extract_first_half_inputs, current_score, is_halftime, LiveDataError)
+# Import du module sans importer directement une fonction récente :
+# cela évite un ImportError si Streamlit Cloud charge temporairement un ancien
+# fichier bpi_live_data.py pendant le redéploiement.
+import bpi_live_data as live_data
+find_live_match = live_data.find_live_match
+extract_first_half_inputs = live_data.extract_first_half_inputs
+current_score = live_data.current_score
+is_halftime = live_data.is_halftime
+LiveDataError = live_data.LiveDataError
+
+def get_match_statistics_diagnostic(fixture_id, api_key):
+    if hasattr(live_data, "get_match_statistics_diagnostic"):
+        return live_data.get_match_statistics_diagnostic(fixture_id, api_key)
+    # Compatibilité avec une ancienne version du connecteur.
+    periods = live_data.get_match_statistics(fixture_id, api_key)
+    return {
+        "periods": periods,
+        "diagnostic": {
+            "top_level_keys": ["compatibilite_ancienne_version"],
+            "data_keys": [],
+            "periods_type": "list",
+            "period_names": [
+                str(p.get("period", "inconnu"))
+                for p in periods if isinstance(p, dict)
+            ],
+        },
+    }
 
 # Compatibilité avec une ancienne copie du module parfois conservée au déploiement.
 # La fonction est normalement exportée par bpi_live_data.py ; ce repli évite
