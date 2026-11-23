@@ -138,6 +138,24 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
                 st.warning("Match identifié, mais le statut du fournisseur ne confirme pas la mi-temps. Aucun score ni statistique ne sera prérempli pour éviter d'utiliser des données en cours.")
             else:
                 first_half = extract_first_half_inputs(periods, allow_all_period=True)
+                # Repère les statistiques optionnelles absentes afin de l'indiquer clairement.
+                source_periods = periods
+                if not all(any(p.get("period") == key for p in periods) for key in ("period1", "period2")):
+                    source_periods = [p for p in periods if p.get("period") == "all"]
+                available_keys = {
+                    item.get("key")
+                    for period in source_periods
+                    for group in (period.get("groups") or [])
+                    for item in (group.get("items") or [])
+                }
+                missing_optional = []
+                for metric, aliases in {
+                    "pertes de balle": {"turnovers", "turnover"},
+                    "rebonds offensifs": {"offensiveRebounds", "offensive_rebounds", "offensive rebounds"},
+                }.items():
+                    if not available_keys.intersection(aliases):
+                        missing_optional.append(metric)
+                st.session_state["bpi_live_missing_optional"] = missing_optional
                 home_score, away_score = current_score(live_match)
                 st.session_state["home_ht"] = home_score
                 st.session_state["away_ht"] = away_score
@@ -162,7 +180,10 @@ if st.session_state.get("bpi_live_match"):
     periods = st.session_state.get("bpi_live_periods") or []
     diagnostic = st.session_state.get("bpi_live_diagnostic") or {}
     if st.session_state.get("bpi_data_filled"):
-        st.success("Préremplissage effectué à partir des statistiques des deux premiers quart-temps.")
+        st.success("Préremplissage effectué à partir des statistiques disponibles à la mi-temps.")
+        missing_optional = st.session_state.get("bpi_live_missing_optional") or []
+        if missing_optional:
+            st.warning("Le fournisseur ne transmet pas : " + ", ".join(missing_optional) + ". Le moteur utilise une approximation neutre pour ces variables; la fiabilité de l'estimation est réduite. Vérifie les données avant toute analyse.")
     elif not periods:
         st.warning("Aucune statistique par période n'a été reçue. Le fournisseur n'a peut-être pas encore publié les statistiques de ce match.")
     else:
