@@ -112,12 +112,13 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
             st.session_state["bpi_live_match"] = live_match
             st.session_state["bpi_live_periods"] = periods
             st.session_state["bpi_live_diagnostic"] = collection["diagnostic"]
-            first_half = extract_first_half_inputs(periods)
-            if not is_halftime(live_match):
+            halftime_confirmed = is_halftime(live_match)
+            if not halftime_confirmed:
                 st.session_state["bpi_live_match"] = live_match
                 st.session_state["bpi_live_periods"] = periods
-                st.warning("Match identifié et statistiques reçues, mais le fournisseur ne confirme pas la mi-temps. Les champs de score ne sont pas remplis pour éviter d'utiliser un score en cours comme score de pause.")
+                st.warning("Match identifié, mais le statut du fournisseur ne confirme pas la mi-temps. Aucun score ni statistique ne sera prérempli pour éviter d'utiliser des données en cours.")
             else:
+                first_half = extract_first_half_inputs(periods, allow_all_period=True)
                 home_score, away_score = current_score(live_match)
                 st.session_state["home_ht"] = home_score
                 st.session_state["away_ht"] = away_score
