@@ -11,7 +11,7 @@ class HalftimeValidationTests(unittest.TestCase):
                      "tov": 4, "orb": 1, "ftm": 3, "fta": 4}
 
     def test_valid_inputs_have_no_errors_or_warnings(self):
-        errors, warnings = validate_halftime_data(37, 24, self.home, self.away)
+        errors, warnings = validate_halftime_data(29, 24, self.home, self.away)
         self.assertEqual(errors, [])
         self.assertEqual(warnings, [])
 
