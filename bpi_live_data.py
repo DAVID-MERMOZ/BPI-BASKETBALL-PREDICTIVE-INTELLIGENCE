@@ -127,14 +127,20 @@ def _period_values(period):
     return values
 
 
-def extract_first_half_inputs(periods):
-    """Convertit les statistiques des deux premiers quart-temps vers le schéma du moteur."""
+def extract_first_half_inputs(periods, allow_all_period=False):
+    """Extrait Q1+Q2, ou la période agrégée 'all' uniquement si la mi-temps est confirmée."""
     by_period = {p.get("period"): p for p in periods or []}
     first_two = [by_period.get("period1"), by_period.get("period2")]
     if not all(first_two):
-        received = [str(p.get("period")) for p in periods or [] if p.get("period")]
-        detail = ", ".join(received) if received else "aucune période"
-        raise LiveDataError("Statistiques des deux premiers quart-temps indisponibles. Périodes reçues : " + detail + ". Aucun champ n'a été rempli. Le fournisseur peut ne pas encore publier ces statistiques pour ce match.")
+        aggregate = by_period.get("all")
+        if allow_all_period and aggregate:
+            # À la pause, certains flux ne fournissent que le cumul du match.
+            # On l'utilise uniquement après confirmation explicite de la mi-temps.
+            first_two = [aggregate]
+        else:
+            received = [str(p.get("period")) for p in periods or [] if p.get("period")]
+            detail = ", ".join(received) if received else "aucune période"
+            raise LiveDataError("Statistiques Q1+Q2 indisponibles. Périodes reçues : " + detail + ". La période 'all' ne sera utilisée que si la mi-temps est confirmée par le fournisseur.")
     aliases = {
         "fga": "fieldGoalsAttempted",
         "fgm": "fieldGoalsMade",
