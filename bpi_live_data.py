@@ -96,17 +96,28 @@ def extract_first_half_inputs(periods):
         "ftm": "freeThrowsMade",
         "fta": "freeThrowsAttempted",
     }
+    # Certains flux renvoient les tentatives dans le champ "total" du
+    # ratio réussi/tenté (ex. fieldGoalsMade: value=réussis, total=tentés).
+    attempts_from_made = {
+        "fga": "fieldGoalsMade",
+        "3pa": "threePointersMade",
+        "fta": "freeThrowsMade",
+    }
     result = {"home": {}, "away": {}}
     for target, source in aliases.items():
         totals = {"home": 0, "away": 0}
         found = {"home": False, "away": False}
         for period in first_two:
-            item = _period_values(period).get(source)
-            if not item:
-                continue
+            values = _period_values(period)
+            item = values.get(source)
             for side in ("home", "away"):
-                side_data = item.get(side) or {}
+                side_data = (item or {}).get(side) or {}
                 value = side_data.get("value")
+                # Fallback explicite: total est le dénominateur du ratio.
+                if value is None and target in attempts_from_made:
+                    made_item = values.get(attempts_from_made[target])
+                    made_side = (made_item or {}).get(side) or {}
+                    value = made_side.get("total")
                 if value is not None:
                     totals[side] += int(round(float(value)))
                     found[side] = True
