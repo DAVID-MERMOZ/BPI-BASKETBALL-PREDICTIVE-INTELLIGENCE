@@ -20,13 +20,19 @@ Le moteur actuel est un prototype à hypothèses simplifiées : il n'est pas ent
 
 Ne jamais utiliser les statistiques finales comme variables d'entrée d'une prédiction à la mi-temps : elles servent uniquement de cibles historiques.
 
+## Objectif de couverture : basketball multi-compétitions
+BPI vise les matchs de basketball de toutes les compétitions couvertes par des données fiables, et non un modèle limité à la NBA, à l'EuroLeague ou à un championnat unique. Le champ `competition` du jeu de données sert à identifier le contexte de chaque match.
+
+La stratégie cible est un modèle global multi-compétitions, avec prise en compte des différences de ligue, saison, format et niveau de jeu. Lorsque le volume de données le permet, des ajustements hiérarchiques ou spécifiques aux compétitions pourront corriger les écarts de rythme et d'efficacité sans entraîner un modèle isolé pour chaque championnat. Une compétition peu représentée ne sera pas déclarée calibrée sur la seule base des résultats d'autres ligues.
+
 ## Feuille de route
-1. Collecter des historiques horodatés et fiables NBA/EuroLeague avec données strictement disponibles à la pause.
-2. Persister matchs, prédictions et résultats dans une base durable.
-3. Construire une validation chronologique hors échantillon, sans fuite de données.
-4. Entraîner des modèles de marge finale, total final et marchés de deuxième mi-temps.
-5. Évaluer MAE/RMSE, Brier/Log Loss et calibration avant d'afficher des probabilités fiables.
-6. Brancher une API live après vérification de la couverture, des coûts et des droits d'utilisation.
+1. Collecter des historiques fiables de nombreuses compétitions et saisons, avec les seules variables réellement disponibles à la mi-temps; enregistrer la compétition, le format et la source.
+2. Vérifier la comparabilité des règles et formats (durée des périodes, prolongations, compétitions masculines/féminines, niveaux) et séparer les cas incompatibles si nécessaire.
+3. Persister matchs, prédictions horodatées et résultats dans une base durable.
+4. Construire une validation chronologique hors échantillon, globale et ventilée par compétition, saison et niveau de couverture, sans fuite de données.
+5. Entraîner un modèle global multi-compétitions et tester des ajustements hiérarchiques par compétition lorsque les données sont suffisantes.
+6. Évaluer MAE/RMSE, Brier/Log Loss, calibration globale et calibration par compétition; surveiller les compétitions peu représentées et refuser d'afficher des probabilités fiables lorsque les données sont insuffisantes.
+7. Étendre la collecte LIVE aux compétitions effectivement prises en charge par le fournisseur, après vérification de la couverture, des coûts et des droits d'utilisation.
 
 ## Dépendances et secrets
 Les dépendances sont déclarées dans `requirements.txt`. Les clés API, lorsqu'elles seront nécessaires, devront être ajoutées aux Secrets de l'hébergeur et jamais commitées dans GitHub.
