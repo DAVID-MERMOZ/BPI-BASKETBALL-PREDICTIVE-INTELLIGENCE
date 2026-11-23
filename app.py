@@ -129,34 +129,38 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
     except Exception as exc:
         st.error(f"Erreur pendant la collecte : {exc}")
 
+# Diagnostic visible directement, sans menu déroulant.
 if st.session_state.get("bpi_live_match"):
     match = st.session_state["bpi_live_match"]
+    st.markdown("### Résultat de la collecte LIVE")
     st.write(f"**{match.get('home', {}).get('name')}** — **{match.get('away', {}).get('name')}**")
     st.caption(f"Compétition : {(match.get('league') or {}).get('name', 'indisponible')} · Statut : {(match.get('status') or {}).get('description', 'indisponible')} · ID fournisseur : {match.get('id')}")
     periods = st.session_state.get("bpi_live_periods") or []
     diagnostic = st.session_state.get("bpi_live_diagnostic") or {}
-    with st.expander("Diagnostic détaillé de la collecte fournisseur", expanded=not bool(periods)):
-        st.write(f"Nombre de périodes reçues : {len(periods)}")
-        st.write("Périodes détectées : " + (", ".join(diagnostic.get("period_names", [])) or "aucune"))
-        st.write("Clés de la réponse : " + (", ".join(diagnostic.get("top_level_keys", [])) or "indisponibles"))
-        st.write("Clés de l'objet data : " + (", ".join(diagnostic.get("data_keys", [])) or "aucune"))
-        st.write("Type du champ periods : " + str(diagnostic.get("periods_type", "diagnostic indisponible")))
-        if not periods:
-            st.warning("Le fournisseur a répondu sans statistiques par période. Cela peut signifier que les statistiques ne sont pas encore publiées pour ce match ou que cette compétition n'est pas couverte à ce niveau. Les champs restent inchangés.")
-        for period in periods:
-                st.write(f"Période : {period.get('period', 'inconnue')}")
-                rows = []
-                for group in period.get("groups", []):
-                    for item in group.get("items", []):
-                        rows.append({
-                            "Statistique": item.get("name") or item.get("key"),
-                            "Domicile": (item.get("home") or {}).get("display", (item.get("home") or {}).get("value")),
-                            "Extérieur": (item.get("away") or {}).get("display", (item.get("away") or {}).get("value")),
-                        })
-                if rows:
-                    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
     if st.session_state.get("bpi_data_filled"):
-        st.success("Préremplissage effectué à partir des statistiques des quart-temps 1 et 2.")
+        st.success("Préremplissage effectué à partir des statistiques des deux premiers quart-temps.")
+    elif not periods:
+        st.warning("Aucune statistique par période n'a été reçue. Le fournisseur n'a peut-être pas encore publié les statistiques de ce match.")
+    else:
+        st.info("Des périodes ont été reçues, mais le préremplissage automatique n'a pas été confirmé.")
+    st.markdown("**Diagnostic technique — informations à communiquer**")
+    st.write(f"- Nombre de périodes reçues : {len(periods)}")
+    st.write("- Périodes détectées : " + (", ".join(diagnostic.get("period_names", [])) or "aucune"))
+    st.write("- Clés de la réponse : " + (", ".join(diagnostic.get("top_level_keys", [])) or "indisponibles"))
+    st.write("- Clés de l'objet data : " + (", ".join(diagnostic.get("data_keys", [])) or "aucune"))
+    st.write("- Type du champ periods : " + str(diagnostic.get("periods_type", "diagnostic indisponible")))
+    for period in periods:
+        st.write(f"Période : {period.get('period', 'inconnue')}")
+        rows = []
+        for group in period.get("groups", []):
+            for item in group.get("items", []):
+                rows.append({
+                    "Statistique": item.get("name") or item.get("key"),
+                    "Domicile": (item.get("home") or {}).get("display", (item.get("home") or {}).get("value")),
+                    "Extérieur": (item.get("away") or {}).get("display", (item.get("away") or {}).get("value")),
+                })
+        if rows:
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 st.subheader("Score à la mi-temps")
 c1, c2 = st.columns(2)
