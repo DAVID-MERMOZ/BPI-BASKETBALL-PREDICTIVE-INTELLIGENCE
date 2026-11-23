@@ -40,6 +40,10 @@ if st.button("Collecter et remplir automatiquement", type="secondary"):
         else:
             live_match = find_live_match(home, away, api_key)
             periods = get_match_statistics(live_match["id"], api_key)
+            # Conserver le match et la réponse brute même si les statistiques
+            # de période sont absentes : le panneau diagnostic doit rester visible.
+            st.session_state["bpi_live_match"] = live_match
+            st.session_state["bpi_live_periods"] = periods
             first_half = extract_first_half_inputs(periods)
             if not is_halftime(live_match):
                 st.session_state["bpi_live_match"] = live_match
