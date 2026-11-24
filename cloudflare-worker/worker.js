@@ -113,7 +113,7 @@ async function telegram(env, message) {
   if (!r.ok || !data.ok) throw new Error("Échec envoi Telegram.");
 }
 async function redisCommand(env, parts) {
-  const base = String(env.UPSTASH_REDIS_REST_URL || "").replace(/\\/$/, "");
+  const base = String(env.UPSTASH_REDIS_REST_URL || "").replace(/\/+$/, "");
   if (!base || !env.UPSTASH_REDIS_REST_TOKEN) throw new Error("Secrets Upstash manquants.");
   const path = parts.map(v => encodeURIComponent(String(v))).join("/");
   const response = await fetch(base + "/" + path, {
