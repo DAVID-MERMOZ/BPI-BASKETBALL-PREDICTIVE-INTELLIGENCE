@@ -6,7 +6,13 @@ Aucune recommandation de mise n'est produite.
 import json
 import logging
 import os
+import sys
 from pathlib import Path
+
+# Permet l’import des modules situés à la racine quand le script est lancé par chemin.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import requests
 
