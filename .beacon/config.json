@@ -1,0 +1,6 @@
+{
+  "slug": "bpi-monitor",
+  "crons": [
+    "*/5 * * * *"
+  ]
+}
