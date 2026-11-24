@@ -4,7 +4,8 @@
  * Prototype Monte Carlo exploratoire, non entraîné et non calibré.
  */
 const API_BASE = "https://api.datasportsapi.com/v2";
-const STATE_KEY = "notified-fixtures-v1";
+const DEDUPE_TTL_SECONDS = 60 * 60 * 24 * 14;
+const PENDING_TTL_SECONDS = 20 * 60;
 
 function text(v) {
   if (v == null) return "";
@@ -111,20 +112,35 @@ async function telegram(env, message) {
   const data = await r.json();
   if (!r.ok || !data.ok) throw new Error("Échec envoi Telegram.");
 }
+async function redisCommand(env, parts) {
+  const base = String(env.UPSTASH_REDIS_REST_URL || "").replace(/\\/$/, "");
+  if (!base || !env.UPSTASH_REDIS_REST_TOKEN) throw new Error("Secrets Upstash manquants.");
+  const path = parts.map(v => encodeURIComponent(String(v))).join("/");
+  const response = await fetch(base + "/" + path, {
+    headers: { Authorization: "Bearer " + env.UPSTASH_REDIS_REST_TOKEN },
+    signal: AbortSignal.timeout(10000)
+  });
+  if (!response.ok) throw new Error("Upstash Redis HTTP " + response.status);
+  const body = await response.json();
+  if (body.error) throw new Error("Upstash Redis: " + body.error);
+  return body.result;
+}
 async function monitor(env) {
   for (const name of ["DATASPORTSAPI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]) {
     if (!env[name]) throw new Error("Secret manquant: " + name);
   }
-  if (!env.BPI_STATE) throw new Error("Binding KV BPI_STATE absent.");
-  const state = await env.BPI_STATE.get(STATE_KEY, "json") || {};
+  if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) throw new Error("Secrets Upstash Redis absents.");
   const payload = await api("/livescores", env.DATASPORTSAPI_API_KEY, "?sport=basketball");
   const matches = Array.isArray(payload.data) ? payload.data : [];
   console.log("Matchs LIVE reçus:", matches.length);
   for (const m of matches) {
     if (!isHalftime(m)) continue;
     const id = fixtureId(m);
-    if (id == null || state[String(id)]) continue;
+    if (id == null) continue;
+    const dedupeKey = "bpi:halftime:" + String(id);
     try {
+      const reservation = await redisCommand(env, ["set", dedupeKey, "pending", "NX", "EX", PENDING_TTL_SECONDS]);
+      if (reservation !== "OK") continue;
       const [hs, as] = score(m);
       const statsPayload = await api("/fixtures/" + encodeURIComponent(id) + "/statistics", env.DATASPORTSAPI_API_KEY);
       const stats = extractStats(statsPayload.data?.periods || []);
@@ -144,10 +160,10 @@ async function monitor(env) {
         "\nIntervalle central 80% du total : " + result.p10 + "–" + result.p90 +
         "\n\n⚠️ Prototype non entraîné et non calibré : pourcentages non fiables. Aucune recommandation de pari ou de mise.";
       await telegram(env, message);
-      state[String(id)] = { status: "telegram_sent", at: new Date().toISOString() };
-      await env.BPI_STATE.put(STATE_KEY, JSON.stringify(state), { expirationTtl: 60 * 60 * 24 * 14 });
+      await redisCommand(env, ["set", dedupeKey, "sent", "EX", DEDUPE_TTL_SECONDS]);
       console.log("Alerte envoyée pour fixture", id);
     } catch (e) {
+      try { await redisCommand(env, ["del", dedupeKey]); } catch (stateError) { console.log("Échec libération déduplication", id, String(stateError)); }
       console.log("Match ignoré", id, String(e));
     }
   }
