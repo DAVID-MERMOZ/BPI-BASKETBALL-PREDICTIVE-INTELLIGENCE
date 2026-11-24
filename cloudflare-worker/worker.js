@@ -80,27 +80,41 @@ function normal(rng) {
   const u = Math.max(rng(), 1e-12), v = rng();
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
-function simulate(hScore, aScore, h, a, n = 1200) {
+function poisson(lambda, rng) {
+  const limit = Math.exp(-lambda);
+  let k = 0, product = 1;
+  do { k++; product *= rng(); } while (product > limit);
+  return k - 1;
+}
+function percentile(sorted, p) {
+  const position = (sorted.length - 1) * p;
+  const lower = Math.floor(position), upper = Math.ceil(position);
+  return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+}
+function simulate(hScore, aScore, h, a, n = 1200, rng = Math.random) {
   const hp = Math.max(1, h.fga - h.orb + h.tov + 0.44 * h.fta);
   const ap = Math.max(1, a.fga - a.orb + a.tov + 0.44 * a.fta);
   const paceMean = Math.min(65, Math.max(25, (hp + ap) / 2));
   const hPpp = Math.min(1.65, Math.max(0.65, 0.55 * (hScore / hp) + 0.45 * 1.05));
   const aPpp = Math.min(1.65, Math.max(0.65, 0.55 * (aScore / ap) + 0.45 * 1.05));
-  let hw = 0, aw = 0, total = 0, homeSum = 0, awaySum = 0;
-  let totals = [];
+  let hw = 0, aw = 0, tie = 0, homeSum = 0, awaySum = 0;
+  const totals = [], margins = [];
   for (let i = 0; i < n; i++) {
-    const pace = Math.min(72, Math.max(20, paceMean + 3.5 * normal(Math.random)));
-    const hs = Math.max(0, Math.round(pace * hPpp + Math.sqrt(Math.max(1, pace * hPpp)) * normal(Math.random)));
-    const as = Math.max(0, Math.round(pace * aPpp + Math.sqrt(Math.max(1, pace * aPpp)) * normal(Math.random)));
-    const hf = hScore + hs, af = aScore + as, t = hf + af;
-    if (hf > af) hw++; else if (af > hf) aw++;
-    homeSum += hf; awaySum += af; total += t; totals.push(t);
+    const pace = Math.min(72, Math.max(20, paceMean + 3.5 * normal(rng)));
+    const he = Math.min(1.75, Math.max(0.60, hPpp + 0.16 * normal(rng)));
+    const ae = Math.min(1.75, Math.max(0.60, aPpp + 0.16 * normal(rng)));
+    const hf = hScore + poisson(pace * he, rng), af = aScore + poisson(pace * ae, rng);
+    const margin = hf - af;
+    if (margin > 0) hw++; else if (margin < 0) aw++; else tie++;
+    homeSum += hf; awaySum += af; totals.push(hf + af); margins.push(margin);
   }
-  totals.sort((x,y) => x-y);
+  totals.sort((x,y) => x-y); margins.sort((x,y) => x-y);
   return {
-    homeWin: 100 * hw / n, awayWin: 100 * aw / n,
-    homeMean: homeSum / n, awayMean: awaySum / n, totalMean: total / n,
-    p10: totals[Math.floor(0.10 * (n-1))], p90: totals[Math.floor(0.90 * (n-1))]
+    homeWin: 100 * hw / n, awayWin: 100 * aw / n, tie: 100 * tie / n,
+    homeMean: homeSum / n, awayMean: awaySum / n, totalMean: (homeSum + awaySum) / n,
+    totalMedian: percentile(totals, 0.5), p10: percentile(totals, 0.1), p90: percentile(totals, 0.9),
+    marginP10: percentile(margins, 0.1), marginP90: percentile(margins, 0.9),
+    homePossessions: hp, awayPossessions: ap, paceMean, homePpp: hPpp, awayPpp: aPpp
   };
 }
 async function telegram(env, message) {
@@ -155,12 +169,18 @@ async function monitor(env) {
         "\nÉquipe projetée en tête : " + favorite +
         "\nVictoire domicile simulée : " + result.homeWin.toFixed(1) + "%" +
         "\nVictoire extérieur simulée : " + result.awayWin.toFixed(1) + "%" +
+        "\nÉgalité simulée : " + result.tie.toFixed(1) + "%" +
         "\nScore final moyen simulé : " + result.homeMean.toFixed(1) + "–" + result.awayMean.toFixed(1) +
         "\nTotal moyen simulé : " + result.totalMean.toFixed(1) +
         "\nIntervalle central 80% du total : " + result.p10 + "–" + result.p90 +
         "\n\n⚠️ Prototype non entraîné et non calibré : pourcentages non fiables. Aucune recommandation de pari ou de mise.";
       await telegram(env, message);
-      await redisCommand(env, ["set", dedupeKey, "sent", "EX", DEDUPE_TTL_SECONDS]);
+      // Après confirmation Telegram, garder la réservation même si Redis échoue.
+      try {
+        await redisCommand(env, ["set", dedupeKey, "sent", "EX", DEDUPE_TTL_SECONDS]);
+      } catch (stateError) {
+        console.log("Alerte envoyée mais statut Redis non finalisé; réservation conservée", id, String(stateError));
+      }
       console.log("Alerte envoyée pour fixture", id);
     } catch (e) {
       try { await redisCommand(env, ["del", dedupeKey]); } catch (stateError) { console.log("Échec libération déduplication", id, String(stateError)); }
