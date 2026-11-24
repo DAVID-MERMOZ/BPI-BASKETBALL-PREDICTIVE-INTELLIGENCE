@@ -1,6 +1,6 @@
 /**
  * BPI Cloudflare Worker — surveillance basket à la mi-temps.
- * Déclenchement Cron: */5 * * * * (UTC).
+ * Déclenchement Cron: toutes les cinq minutes (UTC).
  * Prototype Monte Carlo exploratoire, non entraîné et non calibré.
  */
 const API_BASE = "https://api.datasportsapi.com/v2";
