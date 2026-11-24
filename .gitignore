@@ -1,0 +1,23 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+secrets.toml
+
+# Local databases and exports
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.csv.tmp
+
+# Python/runtime artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local logs
+*.log
