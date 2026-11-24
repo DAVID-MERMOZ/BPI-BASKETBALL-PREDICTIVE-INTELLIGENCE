@@ -1,30 +1,37 @@
-# Déploiement BPI sur Cloudflare Workers (offre gratuite)
+# BPI Worker — déploiement Beacon
 
-Ce Worker remplace l'exécution périodique GitHub Actions pour la surveillance LIVE.
-Le dépôt GitHub reste privé. Aucun secret n'est stocké dans le code.
+Ce Worker surveille les matchs de basketball à la mi-temps, simule une projection exploratoire et envoie une alerte Telegram. Le moteur n'est ni entraîné ni calibré : les pourcentages ne sont pas des probabilités fiables et ne constituent pas des conseils de pari.
 
-## Prérequis
-- Compte Cloudflare Workers Free.
-- Les trois valeurs déjà détenues par l'utilisateur : `DATASPORTSAPI_API_KEY`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
-- Un namespace Cloudflare Workers KV.
+## Architecture gratuite visée
 
-## Configuration dans le tableau de bord Cloudflare
-1. Ouvrir Workers & Pages et créer un Worker nommé `bpi-live-monitor`.
-2. Coller le contenu de `cloudflare-worker/worker.js` dans l'éditeur, puis déployer.
-3. Dans Settings > Bindings, ajouter un binding **KV namespace** :
-   - Variable name : `BPI_STATE`
-   - KV namespace : créer `BPI_STATE` (ou sélectionner ce namespace).
-4. Dans Settings > Variables and Secrets, ajouter les trois secrets (type Secret) :
-   - `DATASPORTSAPI_API_KEY`
-   - `TELEGRAM_BOT_TOKEN`
-   - `TELEGRAM_CHAT_ID`
-5. Dans Settings > Triggers > Cron Triggers, ajouter `*/5 * * * *` (toutes les 5 minutes, UTC).
-6. Redéployer si Cloudflare le demande.
+- **Beacon Workers Free** : exécution JavaScript et déclenchement Cron (si la capacité Cron est activée pour la plateforme).
+- **Upstash Redis Free** : stockage persistant de déduplication via REST. Le code utilise une réservation atomique `SET NX EX` avant l'envoi Telegram afin d'éviter les doublons concurrents.
+- **DataSportsAPI** : source de matchs et statistiques.
+- **Telegram Bot API** : livraison des alertes.
 
-## Limites et prudence
-- Le plan Workers Free documente 100 000 requêtes/jour, 5 Cron Triggers par compte et 10 ms de CPU par invocation Cron. Ce Worker utilise une simulation réduite à 1 200 tirages pour respecter le budget CPU; il faut vérifier les journaux d'exécution réels.
-- Le fournisseur DataSportsAPI peut imposer ses propres quotas. Un cycle toutes les 5 minutes représente jusqu'à 288 appels de liste LIVE par jour, plus un appel statistiques par match à la mi-temps. Vérifier le quota de l'abonnement API.
-- KV sert à éviter les alertes répétées pour le même identifiant de match. L'état expire après 14 jours.
-- Ce prototype ne garantit ni la détection de toutes les mi-temps (le statut fournisseur doit correspondre aux libellés reconnus), ni l'exhaustivité des statistiques.
-- Les résultats restent exploratoires, non entraînés et non calibrés. Aucune recommandation de pari ou de mise.
-- Aucun moyen de paiement n'est requis par les quotas gratuits publiés, mais Cloudflare peut demander une vérification selon le pays, le compte ou les règles anti-abus. Ne pas activer de plan payant.
+Le plan gratuit Beacon ne fournit pas de base D1, KV ou Durable Objects. Upstash est donc utilisé pour conserver l'état sans payer Beacon Plus. Upstash Free annonce 1 base, 250 MB et 500 000 commandes/mois; les limites peuvent évoluer.
+
+## Secrets à configurer dans Beacon
+
+- `DATASPORTSAPI_API_KEY`
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `UPSTASH_REDIS_REST_URL`
+- `UPSTASH_REDIS_REST_TOKEN`
+
+Ne jamais inscrire ces valeurs dans le dépôt GitHub, un fichier public ou une conversation.
+
+## Déclenchement
+
+Le fichier `.beacon/config.json` déclare un Cron toutes les 5 minutes en UTC. Le déploiement Cron ne fonctionnera que si Beacon indique `crons: true` dans `GET /v1/capabilities`. Sinon, ne pas prétendre que la surveillance automatique est active : il faudra choisir un planificateur HTTP externe compatible.
+
+## Limites et tests obligatoires
+
+1. Vérifier la disponibilité réelle des Cron Beacon avant déploiement.
+2. Vérifier que le compte DataSportsAPI autorise le volume de requêtes envisagé.
+3. Tester Upstash REST et l'opération atomique de déduplication.
+4. Tester l'envoi Telegram sur un match de test contrôlé.
+5. Vérifier les logs d'exécution et le comportement sur données incomplètes.
+6. Vérifier les quotas Beacon et Upstash.
+
+Le Worker ne doit pas être déclaré opérationnel avant ces tests.
