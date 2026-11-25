@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 
-from bpi_hoopsapi import analyze_game_odds, normalize_game
+from bpi_hoopsapi import analyze_game_odds, normalize_game, fetch_competitions, HoopsAPIError
 
 
 SAMPLE = {
@@ -76,6 +76,31 @@ class HoopsAPITests(unittest.TestCase):
         self.assertEqual(result["status"], "MARKET_SNAPSHOT_AVAILABLE")
         self.assertFalse(result["game"]["live_confirmed"])
         self.assertIsNone(result["adjusted_probabilities"])
+
+
+    def test_fetch_competitions_parses_catalog(self):
+        from unittest.mock import patch
+        class Response:
+            status_code = 200
+            def json(self):
+                return {"count": 2, "competitions": [
+                    {"pinnacle_id": 487, "name": "NBA", "container": "USA", "event_count": 10},
+                    {"pinnacle_id": 493, "name": "NCAA", "container": "USA", "event_count": 66},
+                ]}
+        with patch("bpi_hoopsapi.requests.get", return_value=Response()):
+            result = fetch_competitions("test-key")
+        self.assertEqual([x["name"] for x in result], ["NBA", "NCAA"])
+        self.assertEqual(result[1]["pinnacle_id"], 493)
+
+    def test_fetch_competitions_rejects_unexpected_schema(self):
+        from unittest.mock import patch
+        class Response:
+            status_code = 200
+            def json(self):
+                return {"items": []}
+        with patch("bpi_hoopsapi.requests.get", return_value=Response()):
+            with self.assertRaises(HoopsAPIError):
+                fetch_competitions("test-key")
 
     def test_invalid_prices_are_ignored(self):
         bad = {"game_id": 1, "providers": {"book": {
