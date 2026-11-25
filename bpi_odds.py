@@ -96,7 +96,7 @@ def normalize_market(market):
         parsed.append({
             "name": str(choice.get("name") or choice.get("label") or choice.get("key") or "unknown"),
             "decimal": price,
-            "opening_decimal": _decimal(choice, "opening", "openingOdds", "open"),
+            "opening_decimal": _decimal(choice, "openingDecimal", "opening", "openingOdds", "open"),
         })
     implied = [1.0 / item["decimal"] for item in parsed]
     total = sum(implied)
