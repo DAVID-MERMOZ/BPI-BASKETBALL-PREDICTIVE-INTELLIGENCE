@@ -1,7 +1,7 @@
+import csv
 import io
 from datetime import datetime, timezone
 
-import pandas as pd
 import streamlit as st
 from bpi_validation import validate_halftime_data
 from engine import simulate_second_half
@@ -11,6 +11,21 @@ from engine import simulate_second_half
 import bpi_live_data as live_data
 find_live_match = live_data.find_live_match
 _extract_first_half_inputs_legacy = live_data.extract_first_half_inputs
+
+
+def render_simple_table(rows):
+    """Affiche une liste de dictionnaires sans bibliothèque tabulaire externe."""
+    if not rows:
+        st.info("Aucune donnée à afficher.")
+        return
+    columns = list(rows[0].keys())
+    def cell(value):
+        text = "" if value is None else str(value)
+        return text.replace("|", "\\|").replace("\\n", " ")
+    header = "| " + " | ".join(cell(col) for col in columns) + " |"
+    separator = "| " + " | ".join("---" for _ in columns) + " |"
+    body = ["| " + " | ".join(cell(row.get(col)) for col in columns) + " |" for row in rows]
+    st.markdown("\\n".join([header, separator] + body))
 
 def extract_first_half_inputs(periods, allow_all_period=False):
     """Compatibilité entre versions du connecteur pendant les redéploiements."""
@@ -205,7 +220,7 @@ if st.session_state.get("bpi_live_match"):
                     "Extérieur": (item.get("away") or {}).get("display", (item.get("away") or {}).get("value")),
                 })
         if rows:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            render_simple_table(rows)
 
 st.subheader("Score à la mi-temps")
 c1, c2 = st.columns(2)
@@ -352,7 +367,7 @@ if stored:
             "Pause": str(row["halftime_home"]) + "-" + str(row["halftime_away"]),
             "Score final": (str(row["final_home"]) + "-" + str(row["final_away"]) if row["final_home"] is not None else "À saisir")
         })
-    st.dataframe(pd.DataFrame(display_rows), use_container_width=True, hide_index=True)
+    render_simple_table(display_rows)
     pending = [row for row in stored if row["final_home"] is None]
     if pending:
         st.markdown("**Enregistrer le résultat final d'un match terminé**")
@@ -377,9 +392,14 @@ else:
 
 st.subheader("Historique des analyses de cette session")
 if st.session_state.prediction_history:
-    history = pd.DataFrame(st.session_state.prediction_history)
-    st.dataframe(history, use_container_width=True)
-    csv = history.to_csv(index=False).encode("utf-8-sig")
-    st.download_button("Télécharger l'historique CSV", data=csv, file_name="bpi_historique_predictions.csv", mime="text/csv")
+    history = st.session_state.prediction_history
+    render_simple_table(history)
+    output = io.StringIO()
+    fieldnames = list(history[0].keys())
+    writer = csv.DictWriter(output, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(history)
+    csv_bytes = output.getvalue().encode("utf-8-sig")
+    st.download_button("Télécharger l'historique CSV", data=csv_bytes, file_name="bpi_historique_predictions.csv", mime="text/csv")
 else:
     st.info("Aucune analyse enregistrée dans cette session. L'historique sera perdu à la fermeture de la session si tu ne télécharges pas le CSV.")
