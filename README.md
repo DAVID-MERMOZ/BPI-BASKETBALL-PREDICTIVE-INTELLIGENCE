@@ -101,3 +101,31 @@ Règles de sécurité :
 collecte odds n'est pas encore intégrée au Worker/Telegram, aucun historique
 persistant de snapshots n'est encore branché, et aucun accès réel à l'endpoint
 odds n'est confirmé. Les sorties ne constituent pas des conseils de mise.
+
+## Historique des mouvements de cotes
+
+Le module `bpi_odds_history.py` ajoute un stockage SQLite durable des snapshots
+normalisés, indexé par fixture, marché, période et ligne. Il permet de comparer
+deux relevés successifs et de mesurer la variation des prix décimaux. Un seul
+relevé est explicitement classé `INSUFFICIENT_HISTORY` : BPI ne prétend donc pas
+détecter un mouvement à partir d'une photographie unique.
+
+Exemple d'utilisation locale :
+
+```python
+from bpi_odds import get_fixture_odds, analyze_live_odds
+from bpi_odds_history import OddsHistory
+
+markets = get_fixture_odds(123456, api_key)
+analysis = analyze_live_odds(markets)
+history = OddsHistory("data/bpi_odds_history.sqlite3")
+history.record(123456, analysis)
+movement = history.movement(123456, "moneyline", period="full")
+print(movement)
+```
+
+Le chemin SQLite local n'est pas automatiquement partagé avec Cloudflare
+Workers. Pour une surveillance cloud et Telegram, il faudra utiliser un stockage
+accessible au Worker (par exemple Redis/Upstash) ou une base distante adaptée,
+puis intégrer et déployer le Worker. Cette intégration cloud n'est pas encore
+effectuée.
