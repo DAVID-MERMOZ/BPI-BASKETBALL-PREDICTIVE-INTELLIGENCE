@@ -261,7 +261,9 @@ async function monitor(env) {
   }
   if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) throw new Error("Secrets Upstash Redis absents.");
   const payload = await api("/livescores", env.DATASPORTSAPI_API_KEY, "?sport=basketball");
-  const matches = Array.isArray(payload.data) ? payload.data : [];\n  try { console.log("HoopsAPI snapshot:", JSON.stringify(await refreshHoopsSnapshots(env))); }\n  catch (e) { console.log("Cotes HoopsAPI indisponibles:", String(e)); }
+  const matches = Array.isArray(payload.data) ? payload.data : [];
+  try { console.log("HoopsAPI snapshot:", JSON.stringify(await refreshHoopsSnapshots(env))); }
+  catch (e) { console.log("Cotes HoopsAPI indisponibles:", String(e)); }
   console.log("Matchs LIVE reçus:", matches.length);
   for (const m of matches) {
     if (!isHalftime(m)) continue;
@@ -274,7 +276,10 @@ async function monitor(env) {
       const [hs, as] = score(m);
       const statsPayload = await api("/fixtures/" + encodeURIComponent(id) + "/statistics", env.DATASPORTSAPI_API_KEY);
       const stats = extractStats(statsPayload.data?.periods || []);
-      const result = simulate(hs, as, stats.home, stats.away);\n      let marketInfo = null, movements = [];\n      try { marketInfo = await findMarketSnapshot(env, m); if (marketInfo?.markets?.length) movements = await recordMarketMovement(env, id, marketInfo.markets); }\n      catch (marketError) { console.log("Comparaison marché indisponible", id, String(marketError)); }
+      const result = simulate(hs, as, stats.home, stats.away);
+      let marketInfo = null, movements = [];
+      try { marketInfo = await findMarketSnapshot(env, m); if (marketInfo?.markets?.length) movements = await recordMarketMovement(env, id, marketInfo.markets); }
+      catch (marketError) { console.log("Comparaison marché indisponible", id, String(marketError)); }
       const home = text(m.home) || "Domicile", away = text(m.away) || "Extérieur";
       const competition = text(m.competition || m.tournament || m.league) || "Non précisée";
       const favorite = result.homeMean > result.awayMean ? home : result.awayMean > result.homeMean ? away : "Équilibre";
