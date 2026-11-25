@@ -129,3 +129,34 @@ Workers. Pour une surveillance cloud et Telegram, il faudra utiliser un stockage
 accessible au Worker (par exemple Redis/Upstash) ou une base distante adaptée,
 puis intégrer et déployer le Worker. Cette intégration cloud n'est pas encore
 effectuée.
+
+
+## Connecteur de cotes HoopsAPI (prototype indépendant)
+
+Le module `bpi_hoopsapi.py` lit les snapshots du endpoint
+`GET https://hoopsapi.com/api/v1/games?competition=NBA` avec authentification
+Bearer. Il normalise les cotes par fournisseur et par période (`ft`, `h1`,
+`h2`, `q1` à `q4`), pour moneyline, handicap/spread, total et totaux
+d'équipe lorsque ces champs sont présents.
+
+Les probabilités implicites sans marge sont calculées uniquement à l'intérieur
+d'une paire d'issues du même marché, fournisseur et période. Les snapshots
+fournisseur sont considérés frais pendant 15 minutes par défaut, selon
+`captured_at`. Les marchés des périodes sont conservés séparément et ne sont
+pas fusionnés avec le marché `ft`.
+
+**Limites et garde-fous :**
+- Un snapshot HoopsAPI ne confirme pas que le match est LIVE. Le statut doit
+  être vérifié indépendamment via la source de fixtures; `live_confirmed`
+  reste donc faux dans ce connecteur.
+- Les horodatages et la fraîcheur doivent être contrôlés avant toute comparaison.
+- Aucun ajustement des probabilités du modèle n'est effectué.
+- La structure observée sur un match NBA a été fournie par l'utilisateur;
+  l'accès HTTP 200 à la liste des matchs a été testé localement. Les tests du
+  parseur utilisent un échantillon représentatif, pas une validation exhaustive
+  de toutes les compétitions ou réponses possibles.
+- Le connecteur n'est pas encore branché au scanner automatique, à Redis,
+  au Worker Cloudflare ni à Telegram.
+
+Clé locale attendue : variable d'environnement `HOOPSAPI_API_KEY`. Ne jamais
+commiter la clé ni la publier dans les journaux.
