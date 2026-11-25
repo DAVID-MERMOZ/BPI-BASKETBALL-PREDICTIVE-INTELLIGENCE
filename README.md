@@ -15,6 +15,26 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## Tester
+Depuis la racine du dépôt :
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+## Tester une simulation manuellement
+La signature de `simulate_second_half` est :
+
+```python
+simulate_second_half(home_ht, away_ht, home_stats, away_stats, n=10000, seed=None)
+```
+
+Les deux scores à la mi-temps sont donc les deux premiers arguments, puis viennent les dictionnaires de statistiques domicile et extérieur. Exemple :
+
+```bash
+python -c "from engine import simulate_second_half; print(simulate_second_half(45,42,{'fga':40,'fgm':18,'3pa':15,'3pm':5,'fta':8,'ftm':6,'tov':7,'orb':4},{'fga':38,'fgm':16,'3pa':14,'3pm':4,'fta':10,'ftm':8,'tov':9,'orb':5},n=10000,seed=42))"
+```
+
 ## Limites importantes
 Le moteur actuel est un prototype à hypothèses simplifiées : il n'est pas entraîné sur des matchs historiques et ses probabilités ne sont pas calibrées. Les sorties ne constituent pas des prévisions fiables ni des conseils de pari. L'historique en mémoire de session n'est pas une base persistante : télécharge le CSV pour le conserver. Un connecteur LIVE DataSportsAPI est présent pour rechercher les matchs en cours et récupérer les statistiques disponibles. Sa couverture dépend de la compétition et du fournisseur; chaque réponse doit être vérifiée en conditions réelles.
 
