@@ -141,7 +141,7 @@ async function redisCommand(env, parts) {
 }
 
 const HOOPS_BASE = "https://hoopsapi.com/api/v1";
-const HOOPS_REFRESH_SECONDS = 3 * 60 * 60; // plafond conservateur: au plus 8 appels/jour
+const HOOPS_REFRESH_SECONDS = 3 * 60 * 60; // huit appels de matchs/jour au maximum
 const MARKET_MAX_AGE_SECONDS = 15 * 60;
 
 function normTeam(value) {
@@ -185,31 +185,58 @@ function marketPairs(game) {
   }
   return out;
 }
-async function fetchHoopsBatch(env) {
+async function hoopsGet(env, path) {
   if (!env.HOOPSAPI_API_KEY) throw new Error("Secret HOOPSAPI_API_KEY manquant.");
-  const response = await fetch(HOOPS_BASE + "/games?competition=NBA", {
+  const response = await fetch(HOOPS_BASE + path, {
     headers: { Authorization: "Bearer " + env.HOOPSAPI_API_KEY },
     signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) throw new Error("HoopsAPI HTTP " + response.status);
-  const payload = await response.json();
-  if (!Array.isArray(payload.games)) throw new Error("Réponse HoopsAPI sans tableau games.");
-  return payload.games;
+  return await response.json();
 }
 async function refreshHoopsSnapshots(env) {
   const lock = await redisCommand(env, ["set", "bpi:hoops:last_fetch", String(Date.now()), "NX", "EX", HOOPS_REFRESH_SECONDS]);
-  if (lock !== "OK") return { refreshed: false, games: 0 };
+  if (lock !== "OK") return { refreshed: false, reason: "refresh_interval" };
+  const day = new Date().toISOString().slice(0, 10);
+  const dailyCountKey = "bpi:hoops:requests:" + day;
   try {
-    const games = await fetchHoopsBatch(env);
-    for (const game of games) {
+    // Une requête quotidienne pour découvrir le catalogue; les autres sont réservées aux matchs.
+    const catalogLock = await redisCommand(env, ["set", "bpi:hoops:catalog_lock:" + day, "1", "NX", "EX", 2 * 86400]);
+    if (catalogLock === "OK") {
+      const catalog = await hoopsGet(env, "/competitions");
+      if (!Array.isArray(catalog.competitions)) throw new Error("Catalogue HoopsAPI invalide.");
+      await redisCommand(env, ["set", "bpi:hoops:competitions", JSON.stringify(catalog.competitions), "EX", 3 * 86400]);
+      await redisCommand(env, ["incr", dailyCountKey]);
+      await redisCommand(env, ["expire", dailyCountKey, 2 * 86400]);
+    }
+    const rawCatalog = await redisCommand(env, ["get", "bpi:hoops:competitions"]);
+    const competitions = rawCatalog ? JSON.parse(rawCatalog) : [];
+    if (!Array.isArray(competitions) || !competitions.length) throw new Error("Catalogue multi-compétitions absent.");
+    const used = Number(await redisCommand(env, ["get", dailyCountKey]) || 0);
+    if (used >= 9) return { refreshed: false, reason: "daily_free_quota_guard", requests_used: used };
+    const cursorKey = "bpi:hoops:competition_cursor";
+    const cursor = Number(await redisCommand(env, ["get", cursorKey]) || 0);
+    const competition = competitions[((cursor % competitions.length) + competitions.length) % competitions.length];
+    if (!competition?.name) throw new Error("Nom de compétition absent du catalogue.");
+    // Réserver le quota avant l'appel pour éviter les doubles dépenses concurrentes.
+    const reserved = await redisCommand(env, ["incr", dailyCountKey]);
+    await redisCommand(env, ["expire", dailyCountKey, 2 * 86400]);
+    if (Number(reserved) > 9) return { refreshed: false, reason: "daily_free_quota_guard", requests_used: Number(reserved) };
+    const payload = await hoopsGet(env, "/games?competition=" + encodeURIComponent(competition.name));
+    if (!Array.isArray(payload.games)) throw new Error("Réponse HoopsAPI sans tableau games.");
+    for (const game of payload.games) {
       if (game?.game_id == null) continue;
-      const record = { game_id: game.game_id, home: game.home, away: game.away,
-        start_time: game.start_time, updated_at: game.updated_at, markets: marketPairs(game) };
+      const record = { game_id: game.game_id, competition: game.competition || competition.name,
+        home: game.home, away: game.away, start_time: game.start_time,
+        updated_at: game.updated_at, markets: marketPairs(game) };
       await redisCommand(env, ["set", "bpi:hoops:game:" + game.game_id, JSON.stringify(record), "EX", 86400]);
     }
+    await redisCommand(env, ["set", cursorKey, String(cursor + 1)]);
     await redisCommand(env, ["set", "bpi:hoops:last_success", String(Date.now()), "EX", 86400]);
-    return { refreshed: true, games: games.length };
+    return { refreshed: true, competition: competition.name, competitions_total: competitions.length,
+      games: payload.games.length, requests_used_today: Number(reserved) };
   } catch (e) {
+    // Le verrou horaire est libéré; le compteur journalier reste consommé si l'appel a pu partir.
     await redisCommand(env, ["del", "bpi:hoops:last_fetch"]);
     throw e;
   }
