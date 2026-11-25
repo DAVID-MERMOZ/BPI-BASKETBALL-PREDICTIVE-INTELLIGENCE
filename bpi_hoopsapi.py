@@ -57,6 +57,52 @@ def fetch_games(api_key, competition="NBA", timeout=20):
     return payload["games"]
 
 
+
+def fetch_competitions(api_key, timeout=20):
+    """Récupère le catalogue réel des compétitions accessibles au compte."""
+    if not api_key or not str(api_key).strip():
+        raise HoopsAPIError("Clé HoopsAPI absente.")
+    try:
+        response = requests.get(
+            f"{BASE_URL}/competitions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
+        )
+    except requests.RequestException as exc:
+        raise HoopsAPIError(f"Connexion HoopsAPI impossible : {exc}") from exc
+    if response.status_code == 401:
+        raise HoopsAPIError("Clé HoopsAPI refusée (HTTP 401).")
+    if response.status_code == 403:
+        raise HoopsAPIError("Accès HoopsAPI refusé (HTTP 403).")
+    if response.status_code == 429:
+        raise HoopsAPIError("Quota HoopsAPI atteint (HTTP 429).")
+    if response.status_code >= 400:
+        raise HoopsAPIError(f"HoopsAPI indisponible (HTTP {response.status_code}).")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise HoopsAPIError("Réponse HoopsAPI JSON illisible.") from exc
+    competitions = payload.get("competitions") if isinstance(payload, dict) else None
+    if not isinstance(competitions, list):
+        raise HoopsAPIError("Réponse HoopsAPI inattendue : liste competitions absente.")
+    clean = []
+    seen = set()
+    for item in competitions:
+        if not isinstance(item, dict) or not item.get("name"):
+            continue
+        name = str(item["name"]).strip()
+        if not name or name.casefold() in seen:
+            continue
+        seen.add(name.casefold())
+        clean.append({
+            "pinnacle_id": item.get("pinnacle_id"),
+            "name": name,
+            "container": item.get("container"),
+            "event_count": item.get("event_count"),
+        })
+    return clean
+
+
 def _price(value):
     try:
         number = float(value)
