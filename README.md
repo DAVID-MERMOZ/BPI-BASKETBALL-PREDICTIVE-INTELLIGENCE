@@ -160,3 +160,19 @@ pas fusionnés avec le marché `ft`.
 
 Clé locale attendue : variable d'environnement `HOOPSAPI_API_KEY`. Ne jamais
 commiter la clé ni la publier dans les journaux.
+
+
+## Surveillance automatique Google Apps Script (alternative à Cloudflare)
+
+Une version autonome du scanner de mi-temps est maintenant disponible dans
+`google-apps-script/Code.gs`. Elle utilise un déclencheur Google toutes les
+5 minutes, DataSportsAPI, les propriétés sécurisées du script et Telegram.
+Elle n'exige ni Wrangler ni exécution locale sur Android.
+
+Guide de configuration : `google-apps-script/DEPLOYMENT.md`.
+
+Le code est ajouté au dépôt, mais cela ne signifie pas qu'il est déjà installé
+dans un projet Google Apps Script ni que les notifications Telegram sont
+actives. Le déploiement doit être effectué dans un compte Google, puis validé
+par un message Telegram de test, un déclencheur visible et une vraie alerte
+de mi-temps. Le moteur reste exploratoire, non entraîné et non calibré.
