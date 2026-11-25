@@ -22,6 +22,15 @@ Depuis la racine du dépôt :
 python -m unittest discover -s tests -v
 ```
 
+## Diagnostic réel DataSportsAPI (basketball LIVE)
+Le script interactif interroge le fournisseur avec ta clé saisie masquée, liste les matchs LIVE, puis permet de sélectionner un ID. Il affiche les périodes et les clés statistiques reçues, et vérifie si le parseur BPI accepte les données Q1+Q2. La clé n'est pas affichée ni écrite dans un fichier.
+
+```bash
+python scripts/diagnose_datasportsapi_basketball.py
+```
+
+Le diagnostic exige une clé DataSportsAPI valide et un match LIVE avec statistiques disponibles. Un refus du parseur signifie que les données reçues sont insuffisantes pour une prédiction sûre; ne contourne pas ce refus en inventant des valeurs.
+
 ## Tester une simulation manuellement
 La signature de `simulate_second_half` est :
 
