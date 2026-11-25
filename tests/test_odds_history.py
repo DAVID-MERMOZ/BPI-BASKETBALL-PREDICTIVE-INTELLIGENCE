@@ -22,7 +22,8 @@ class OddsHistoryTests(unittest.TestCase):
             self.assertEqual(history.record(42, second), 1)
             result = history.movement(42, "moneyline", "full")
             self.assertEqual(result["status"], "OBSERVED_MOVEMENT")
-            self.assertAlmostEqual(result["changes"][0]["delta"], -0.1)
+            home_change = next(item for item in result["changes"] if item["outcome"] == "Home")
+            self.assertAlmostEqual(home_change["delta"], -0.1)
 
     def test_one_snapshot_is_not_called_a_movement(self):
         with tempfile.TemporaryDirectory() as folder:
