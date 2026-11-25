@@ -65,3 +65,39 @@ La stratégie cible est un modèle global multi-compétitions, avec prise en com
 
 ## Dépendances et secrets
 Les dépendances sont déclarées dans `requirements.txt`. Les clés API, lorsqu'elles seront nécessaires, devront être ajoutées aux Secrets de l'hébergeur et jamais commitées dans GitHub.
+
+## BPI Market Intelligence — surveillance des cotes LIVE
+
+Cette brique est distincte du moteur statistique. Elle collecte les marchés du
+fixture exact via `GET /v2/fixtures/{id}/odds`, conserve les informations de
+marché disponibles (type, période, ligne, statut live/suspendu, prix actuel,
+prix d'ouverture et horodatage) et calcule les probabilités implicites sans
+marge pour les marchés deux issues complets.
+
+Module : `bpi_odds.py`.
+
+Règles de sécurité :
+- Seuls les marchés explicitement `live: true`, non suspendus et avec deux
+  prix décimaux valides sont comparés.
+- La normalisation sans marge est effectuée uniquement entre les deux issues
+  d'un même marché/ligne; aucun mélange de handicaps, totaux ou périodes.
+- Les probabilités du modèle restent séparées des probabilités de marché.
+  Aucune pondération ni correction du pronostic n'est appliquée avant une
+  validation historique hors échantillon.
+- Marché absent, suspendu, incomplet ou inaccessible = `NO_SIGNAL`, pas une
+  invitation à extrapoler.
+- Les mouvements de cotes ne prouvent ni information privilégiée ni intention
+  d'un bookmaker. Les interprétations restent descriptives et probabilistes.
+- Un snapshot unique ne constitue pas une surveillance des mouvements. Une
+  surveillance réelle exige plusieurs snapshots horodatés persistés pour le
+  même fixture et la même ligne, ou un flux temps réel autorisé.
+- L'accès aux endpoints odds dépend du plan DataSportsAPI. Un HTTP 403 est
+  signalé comme accès probablement non inclus; ne pas acheter/mettre à niveau
+  un plan sans vérifier les droits et obtenir l'accord explicite de l'utilisateur.
+- DataSportsAPI peut ne fournir qu'un bookmaker par fixture et anonymiser son
+  nom; BPI ne doit donc pas prétendre comparer plusieurs bookmakers.
+
+À ce stade, le module de normalisation et ses tests sont ajoutés, mais la
+collecte odds n'est pas encore intégrée au Worker/Telegram, aucun historique
+persistant de snapshots n'est encore branché, et aucun accès réel à l'endpoint
+odds n'est confirmé. Les sorties ne constituent pas des conseils de mise.
