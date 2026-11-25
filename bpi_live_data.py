@@ -1,4 +1,4 @@
-""""Connecteur DataSportsAPI et normalisation des statistiques basket LIVE."""
+"""Connecteur DataSportsAPI et normalisation des statistiques basket LIVE."""
 import unicodedata
 import requests
 
@@ -128,19 +128,18 @@ def _period_values(period):
 
 
 def extract_first_half_inputs(periods, allow_all_period=False):
-    """Extrait Q1+Q2, ou la période agrégée 'all' uniquement si la mi-temps est confirmée."""
+    """Extrait Q1+Q2, ou 'all' seulement si la mi-temps est confirmée."""
     by_period = {p.get("period"): p for p in periods or []}
     first_two = [by_period.get("period1"), by_period.get("period2")]
     if not all(first_two):
         aggregate = by_period.get("all")
         if allow_all_period and aggregate:
-            # À la pause, certains flux ne fournissent que le cumul du match.
-            # On l'utilise uniquement après confirmation explicite de la mi-temps.
             first_two = [aggregate]
         else:
             received = [str(p.get("period")) for p in periods or [] if p.get("period")]
             detail = ", ".join(received) if received else "aucune période"
             raise LiveDataError("Statistiques Q1+Q2 indisponibles. Périodes reçues : " + detail + ". La période 'all' ne sera utilisée que si la mi-temps est confirmée par le fournisseur.")
+
     aliases = {
         "fga": "fieldGoalsAttempted",
         "fgm": "fieldGoalsMade",
@@ -151,47 +150,45 @@ def extract_first_half_inputs(periods, allow_all_period=False):
         "ftm": "freeThrowsMade",
         "fta": "freeThrowsAttempted",
     }
-    # Certains flux renvoient les tentatives dans le champ "total" du
-    # ratio réussi/tenté (ex. fieldGoalsMade: value=réussis, total=tentés).
     attempts_from_made = {
         "fga": "fieldGoalsMade",
         "3pa": "threePointersMade",
         "fta": "freeThrowsMade",
     }
+    optional = {"tov", "orb"}
     result = {"home": {}, "away": {}}
+    missing_required = []
+
     for target, source in aliases.items():
         totals = {"home": 0, "away": 0}
-        found = {"home": False, "away": False}
+        missing_optional = {"home": False, "away": False}
         for period in first_two:
+            period_name = str(period.get("period", "unknown"))
             values = _period_values(period)
             item = values.get(source)
             for side in ("home", "away"):
                 side_data = (item or {}).get(side) or {}
                 value = side_data.get("value")
-                # Fallback explicite: total est le dénominateur du ratio.
                 if value is None and target in attempts_from_made:
                     made_item = values.get(attempts_from_made[target])
                     made_side = (made_item or {}).get(side) or {}
                     value = made_side.get("total")
-                if value is not None:
+                if value is None:
+                    if target in optional:
+                        missing_optional[side] = True
+                    else:
+                        missing_required.append(f"{side}.{target} ({period_name})")
+                else:
                     totals[side] += int(round(float(value)))
-                    found[side] = True
         for side in ("home", "away"):
-            result[side][target] = totals[side] if found[side] else None
-    # TOV et ORB sont facultatifs : certaines compétitions ne les publient pas.
-    # Leur absence est signalée; le moteur utilisera une approximation neutre (net = 0).
-    optional = {"tov", "orb"}
-    missing_required = [
-        f"{side}.{key}" for side in ("home", "away")
-        for key, value in result[side].items()
-        if value is None and key not in optional
-    ]
+            result[side][target] = 0 if target in optional and missing_optional[side] else totals[side]
+
     if missing_required:
-        raise LiveDataError("Données essentielles incomplètes : " + ", ".join(missing_required) + ". Aucun préremplissage effectué.")
-    for side in ("home", "away"):
-        for key in optional:
-            if result[side][key] is None:
-                result[side][key] = 0
+        raise LiveDataError(
+            "Données essentielles incomplètes par période : "
+            + ", ".join(missing_required)
+            + ". Aucun préremplissage effectué."
+        )
     return result
 
 
