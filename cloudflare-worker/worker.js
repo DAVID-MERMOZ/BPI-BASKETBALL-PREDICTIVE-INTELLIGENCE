@@ -139,13 +139,129 @@ async function redisCommand(env, parts) {
   if (body.error) throw new Error("Upstash Redis: " + body.error);
   return body.result;
 }
+
+const HOOPS_BASE = "https://hoopsapi.com/api/v1";
+const HOOPS_REFRESH_SECONDS = 3 * 60 * 60; // plafond conservateur: au plus 8 appels/jour
+const MARKET_MAX_AGE_SECONDS = 15 * 60;
+
+function normTeam(value) {
+  return String(value || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function parseTime(value) {
+  const n = Date.parse(value || "");
+  return Number.isFinite(n) ? n : null;
+}
+function marketPairs(game) {
+  const out = [];
+  const add = (provider, period, marketName, market, a, b, capturedAt) => {
+    if (!market || typeof market !== "object") return;
+    const x = Number(market[a]), y = Number(market[b]);
+    const captured = parseTime(capturedAt);
+    const age = captured == null ? null : Math.floor((Date.now() - captured) / 1000);
+    if (!(x > 1 && y > 1) || age == null || age < -60 || age > MARKET_MAX_AGE_SECONDS) return;
+    const ix = 1 / x, iy = 1 / y, sum = ix + iy;
+    out.push({ provider, period, market: marketName, line: market.line ?? null,
+      captured_at: capturedAt, age_seconds: age, first_price: x, second_price: y,
+      first_fair_probability: ix / sum, second_fair_probability: iy / sum });
+  };
+  for (const [provider, data] of Object.entries(game.providers || {})) {
+    if (!data || typeof data !== "object") continue;
+    add(provider, "ft", "moneyline", data.moneyline, "home", "away", data.captured_at);
+    add(provider, "ft", "handicap", data.handicap, "home", "away", data.captured_at);
+    add(provider, "ft", "total", data.over_under, "over", "under", data.captured_at);
+    for (const key of ["team_total_home", "team_total_away"])
+      add(provider, "ft", key, data[key], "over", "under", data.captured_at);
+  }
+  for (const [period, providers] of Object.entries(game.periods || {})) {
+    for (const [provider, markets] of Object.entries(providers || {})) {
+      if (!markets || typeof markets !== "object") continue;
+      for (const key of ["moneyline", "spread", "total", "team_total_home", "team_total_away"]) {
+        const m = markets[key];
+        add(provider, period, key, m, key === "moneyline" || key === "spread" ? "home" : "over",
+          key === "moneyline" || key === "spread" ? "away" : "under", m?.captured_at);
+      }
+    }
+  }
+  return out;
+}
+async function fetchHoopsBatch(env) {
+  if (!env.HOOPSAPI_API_KEY) throw new Error("Secret HOOPSAPI_API_KEY manquant.");
+  const response = await fetch(HOOPS_BASE + "/games?competition=NBA", {
+    headers: { Authorization: "Bearer " + env.HOOPSAPI_API_KEY },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error("HoopsAPI HTTP " + response.status);
+  const payload = await response.json();
+  if (!Array.isArray(payload.games)) throw new Error("Réponse HoopsAPI sans tableau games.");
+  return payload.games;
+}
+async function refreshHoopsSnapshots(env) {
+  const lock = await redisCommand(env, ["set", "bpi:hoops:last_fetch", String(Date.now()), "NX", "EX", HOOPS_REFRESH_SECONDS]);
+  if (lock !== "OK") return { refreshed: false, games: 0 };
+  try {
+    const games = await fetchHoopsBatch(env);
+    for (const game of games) {
+      if (game?.game_id == null) continue;
+      const record = { game_id: game.game_id, home: game.home, away: game.away,
+        start_time: game.start_time, updated_at: game.updated_at, markets: marketPairs(game) };
+      await redisCommand(env, ["set", "bpi:hoops:game:" + game.game_id, JSON.stringify(record), "EX", 86400]);
+    }
+    await redisCommand(env, ["set", "bpi:hoops:last_success", String(Date.now()), "EX", 86400]);
+    return { refreshed: true, games: games.length };
+  } catch (e) {
+    await redisCommand(env, ["del", "bpi:hoops:last_fetch"]);
+    throw e;
+  }
+}
+async function findMarketSnapshot(env, fixture) {
+  const keys = await redisCommand(env, ["keys", "bpi:hoops:game:*"]);
+  if (!Array.isArray(keys)) return null;
+  const home = normTeam(text(fixture.home)), away = normTeam(text(fixture.away));
+  const start = parseTime(fixture.startTime || fixture.start_time || fixture.startDate);
+  const candidates = [];
+  for (const key of keys.slice(0, 100)) {
+    const raw = await redisCommand(env, ["get", key]);
+    if (!raw) continue;
+    let item; try { item = JSON.parse(raw); } catch { continue; }
+    const sameTeams = normTeam(item.home) === home && normTeam(item.away) === away;
+    const marketStart = parseTime(item.start_time);
+    if (!sameTeams || start == null || marketStart == null || Math.abs(start - marketStart) > 180 * 60000) continue;
+    candidates.push(item);
+  }
+  if (candidates.length !== 1) return { status: candidates.length ? "AMBIGUOUS" : "NO_MATCH", markets: [] };
+  const item = candidates[0];
+  const markets = (item.markets || []).filter(m => m.age_seconds >= 0 && m.age_seconds <= MARKET_MAX_AGE_SECONDS);
+  return { status: markets.length ? "MARKET_SNAPSHOT_AVAILABLE" : "NO_FRESH_MARKET",
+    game_id: item.game_id, markets };
+}
+async function recordMarketMovement(env, fixtureIdValue, markets) {
+  const changes = [];
+  for (const m of markets) {
+    const signature = [m.provider, m.period, m.market, m.line ?? "none"].join(":");
+    const key = "bpi:market:last:" + fixtureIdValue + ":" + signature;
+    const previousRaw = await redisCommand(env, ["get", key]);
+    if (previousRaw) {
+      try {
+        const previous = JSON.parse(previousRaw);
+        changes.push({ provider: m.provider, period: m.period, market: m.market, line: m.line,
+          previous_home_or_over: previous.first_price, current_home_or_over: m.first_price,
+          previous_away_or_under: previous.second_price, current_away_or_under: m.second_price,
+          delta_first: m.first_price - previous.first_price, delta_second: m.second_price - previous.second_price });
+      } catch {}
+    }
+    await redisCommand(env, ["set", key, JSON.stringify(m), "EX", 7 * 86400]);
+  }
+  return changes;
+}
+
 async function monitor(env) {
   for (const name of ["DATASPORTSAPI_API_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"]) {
     if (!env[name]) throw new Error("Secret manquant: " + name);
   }
   if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) throw new Error("Secrets Upstash Redis absents.");
   const payload = await api("/livescores", env.DATASPORTSAPI_API_KEY, "?sport=basketball");
-  const matches = Array.isArray(payload.data) ? payload.data : [];
+  const matches = Array.isArray(payload.data) ? payload.data : [];\n  try { console.log("HoopsAPI snapshot:", JSON.stringify(await refreshHoopsSnapshots(env))); }\n  catch (e) { console.log("Cotes HoopsAPI indisponibles:", String(e)); }
   console.log("Matchs LIVE reçus:", matches.length);
   for (const m of matches) {
     if (!isHalftime(m)) continue;
@@ -158,7 +274,7 @@ async function monitor(env) {
       const [hs, as] = score(m);
       const statsPayload = await api("/fixtures/" + encodeURIComponent(id) + "/statistics", env.DATASPORTSAPI_API_KEY);
       const stats = extractStats(statsPayload.data?.periods || []);
-      const result = simulate(hs, as, stats.home, stats.away);
+      const result = simulate(hs, as, stats.home, stats.away);\n      let marketInfo = null, movements = [];\n      try { marketInfo = await findMarketSnapshot(env, m); if (marketInfo?.markets?.length) movements = await recordMarketMovement(env, id, marketInfo.markets); }\n      catch (marketError) { console.log("Comparaison marché indisponible", id, String(marketError)); }
       const home = text(m.home) || "Domicile", away = text(m.away) || "Extérieur";
       const competition = text(m.competition || m.tournament || m.league) || "Non précisée";
       const favorite = result.homeMean > result.awayMean ? home : result.awayMean > result.homeMean ? away : "Équilibre";
