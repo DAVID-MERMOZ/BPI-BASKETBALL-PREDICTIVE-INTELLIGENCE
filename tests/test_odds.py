@@ -29,6 +29,25 @@ class OddsNormalizationTests(unittest.TestCase):
         self.assertEqual(result["status"], "NO_SIGNAL")
         self.assertIsNone(result["adjusted_probabilities"])
 
+    def test_datasportsapi_fixture_odds_schema_reads_opening_decimal(self):
+        market = normalize_market({
+            "key": "totalPoints:145.5:live",
+            "kind": "totalPoints",
+            "period": "match",
+            "line": 145.5,
+            "live": True,
+            "suspended": False,
+            "updatedAt": "2026-11-25T18:00:00.000Z",
+            "choices": [
+                {"name": "Over", "outcome": "over", "decimal": 1.91, "openingDecimal": 1.85},
+                {"name": "Under", "outcome": "under", "decimal": 1.91, "openingDecimal": 1.97},
+            ],
+        })
+        self.assertIsNotNone(market)
+        self.assertEqual(market["outcomes"][0]["opening_decimal"], 1.85)
+        self.assertEqual(market["line"], 145.5)
+        self.assertEqual(market["period"], "match")
+
     def test_market_comparison_does_not_overwrite_model(self):
         result = analyze_live_odds([{
             "key": "moneyline", "live": True, "suspended": False,
