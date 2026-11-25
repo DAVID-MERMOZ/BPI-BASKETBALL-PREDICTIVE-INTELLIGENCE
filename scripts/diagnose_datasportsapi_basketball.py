@@ -5,6 +5,13 @@ fournisseur et de lancer le parseur BPI sur un match LIVE sélectionné.
 """
 import getpass
 import sys
+from pathlib import Path
+
+# Permet l'import des modules à la racine même lorsque le script est lancé
+# directement avec : python scripts/diagnose_datasportsapi_basketball.py
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from bpi_live_data import (
     LiveDataError,
@@ -67,9 +74,11 @@ def show_statistics(periods):
             for item in group.get("items") or []:
                 home = item.get("home") or {}
                 away = item.get("away") or {}
+
                 def value(side):
                     v, total = side.get("value"), side.get("total")
                     return f"{v}/{total}" if total is not None else str(v)
+
                 print(
                     f"    {item.get('key')}: domicile {value(home)} | "
                     f"extérieur {value(away)}"
