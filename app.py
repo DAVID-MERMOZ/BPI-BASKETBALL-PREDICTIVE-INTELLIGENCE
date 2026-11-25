@@ -25,7 +25,7 @@ def render_simple_table(rows):
     header = "| " + " | ".join(cell(col) for col in columns) + " |"
     separator = "| " + " | ".join("---" for _ in columns) + " |"
     body = ["| " + " | ".join(cell(row.get(col)) for col in columns) + " |" for row in rows]
-    st.markdown("\\n".join([header, separator] + body))
+    st.markdown("\n".join([header, separator] + body))
 
 def extract_first_half_inputs(periods, allow_all_period=False):
     """Compatibilité entre versions du connecteur pendant les redéploiements."""
