@@ -258,9 +258,16 @@ async function findMarketSnapshot(env, fixture) {
   }
   if (candidates.length !== 1) return { status: candidates.length ? "AMBIGUOUS" : "NO_MATCH", markets: [] };
   const item = candidates[0];
-  const markets = (item.markets || []).filter(m => m.age_seconds >= 0 && m.age_seconds <= MARKET_MAX_AGE_SECONDS);
+  // Recalculer l'âge au moment de la lecture : age_seconds stocké lors de la collecte devient obsolète.
+  const now = Date.now();
+  const markets = (item.markets || []).map(m => {
+    const captured = parseTime(m.captured_at);
+    const age = captured == null ? null : Math.floor((now - captured) / 1000);
+    return { ...m, age_seconds: age };
+  }).filter(m => m.age_seconds !== null && m.age_seconds >= 0 &&
+    m.age_seconds <= MARKET_MAX_AGE_SECONDS);
   return { status: markets.length ? "MARKET_SNAPSHOT_AVAILABLE" : "NO_FRESH_MARKET",
-    game_id: item.game_id, markets };
+    game_id: item.game_id, markets, source_scope: "PREMATCH_SNAPSHOT_NOT_LIVE" };
 }
 async function recordMarketMovement(env, fixtureIdValue, markets) {
   const changes = [];
